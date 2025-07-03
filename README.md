@@ -4,7 +4,7 @@ A complete NixOS-based VM router system with hardware passthrough for secure net
 
 ## Overview
 
-Septix automatically sets up a virtualized router environment where your primary network interface is passed through to a router VM, providing strong isolation between work and leisure environments while maintaining reliable network connectivity.
+Splix automatically sets up a virtualized router environment where your primary network interface is passed through to a router VM, providing strong isolation between work and leisure environments while maintaining reliable network connectivity.
 
 ### Architecture
 
@@ -38,8 +38,8 @@ Internet → WiFi Card (Passthrough) → Router VM → Internal Network
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/septix.git
-   cd septix
+   git clone https://github.com/yourusername/splix.git
+   cd splix
    ```
 
 2. **Run hardware detection:**
@@ -118,7 +118,7 @@ This will:
 ## Project Structure
 
 ```
-septix/
+splix/
 ├── flake.nix                          # Main flake configuration
 ├── flake.lock                         # Dependency lock file
 ├── scripts/
