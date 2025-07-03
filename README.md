@@ -1,4 +1,4 @@
-# Septix - Secure VM Router Setup
+# Splix - Secure VM Router Setup
 
 A complete NixOS-based VM router system with hardware passthrough for secure network isolation.
 
