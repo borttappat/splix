@@ -1,0 +1,10 @@
+{
+  "PRIMARY_INTERFACE": "",
+  "PRIMARY_PCI": "",
+  "PRIMARY_ID": "",
+  "PRIMARY_DRIVER": "",
+  "IOMMU_ISOLATED": false,
+  "ALT_INTERFACES": false,
+  "COMPATIBILITY_SCORE": ,
+  "RECOMMENDATION": ""
+}

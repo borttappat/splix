@@ -1,53 +1,53 @@
 {
-  description = "Nixarium - Hardware-Agnostic VM Router Setup";
+  description = "NixOS VM Router Setup";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-      in
-      {
-        packages = {
-          routerVM = self.nixosConfigurations.routerVM.config.system.build.qcow2;
-        };
-
-        apps = {
-          detect = {
-            type = "app";
-            program = "${pkgs.bash}/bin/bash";
-            args = [ "scripts/hardware-detect.sh" ];
-          };
-        };
-
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            jq
-            libvirt
-            qemu
-            virt-manager
-          ];
-        };
-      }
-    ) // {
+  outputs = { self, nixpkgs, flake-utils, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
+    {
+      # NixOS configurations
       nixosConfigurations = {
-        routerVM = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
+        # VM Router Host configuration
+        router-host = nixpkgs.lib.nixosSystem {
+          inherit system;
           modules = [
-            ./modules/router-vm.nix
+            # Import local hardware config
+            ./hosts/router-host/hardware-configuration.nix
+            
+            # Base system configuration
+            ./modules/base.nix
+            
+            # VM router passthrough configuration
+            ./modules/vm-router/host-passthrough.nix
+            
+            # Host-specific configuration
+            ./hosts/router-host/configuration.nix
           ];
         };
+      };
 
-        vmRouter = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
-          modules = [
-            ./modules/vm-router.nix
-          ];
-        };
+      # Development shell
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          pciutils usbutils iproute2 bridge-utils
+          qemu libvirt virt-manager
+          netcat nmap iperf3
+          git jq
+        ];
+        
+        shellHook = ''
+          echo "NixOS VM Router Development Environment"
+          echo "Commands:"
+          echo "  nixos-rebuild switch --flake .#router-host - Apply config"
+          echo "  emergency-network - Emergency network recovery"
+        '';
       };
     };
 }

@@ -1,0 +1,24 @@
+{
+  "compatibility_score": 12,
+  "virtualization_score": 4,
+  "iommu_score": ,
+  "best_device": {"interface":"wlo1","pci_slot":"0000:00:14.3","driver":"iwlwifi","vendor_device_id":"0280: Intel Corporation BE201 320MHz 8086:a840","iommu_group":"11","type":"pcie"},
+  "all_devices": [
+  {
+    "interface": "wlo1",
+    "pci_slot": "0000:00:14.3",
+    "driver": "iwlwifi",
+    "vendor_device_id": "0280: Intel Corporation BE201 320MHz 8086:a840",
+    "iommu_group": "11",
+    "type": "pcie",
+    "assessment": {
+      "score": 8,
+      "issues": [
+        ""
+      ]
+    }
+  }
+],
+  "recommendation": "excellent",
+  "generated_at": "2025-07-03T14:03:08+02:00"
+}
