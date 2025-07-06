@@ -1,5 +1,5 @@
 # Generated NixOS configuration for VM router passthrough
-# Generated on Thu Jul  3 17:39:07 CEST 2025
+# Generated on Sun Jul  6 19:50:52 CEST 2025
 # Hardware: wlo1 (8086:a840) using iwlwifi driver
 
 { config, lib, pkgs, ... }:

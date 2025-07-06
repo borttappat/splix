@@ -1,24 +1,22 @@
-# modules/vm-router/host-passthrough.nix - VM router host configuration with passthrough
+# Generated NixOS configuration for VM router passthrough
+# Generated on Sun Jul  6 19:50:52 CEST 2025
+# Hardware: wlo1 (8086:a840) using iwlwifi driver
+
 { config, lib, pkgs, ... }:
 
 {
-  # Import hardware detection
-  imports = [
-    ./hardware-detection.nix
-  ];
-  
   # Enable IOMMU and VFIO for device passthrough
   boot.kernelParams = [ 
     "intel_iommu=on" 
     "iommu=pt"
-    "vfio-pci.ids=${config.hardware.vmRouter.primaryDeviceId}"
+    "vfio-pci.ids=8086:a840"
   ];
 
   # Load VFIO modules early
   boot.kernelModules = [ "vfio" "vfio_iommu_type1" "vfio_pci" ];
   
   # Blacklist the network driver on host to prevent conflicts
-  boot.blacklistedKernelModules = [ config.hardware.vmRouter.primaryDriver ];
+  boot.blacklistedKernelModules = [ "iwlwifi" ];
 
   # Enable virtualization
   virtualisation.libvirtd = {
@@ -43,6 +41,13 @@
     bridges.virbr1 = {
       interfaces = [];
     };
+    
+    firewall = {
+      enable = true;
+      allowedTCPPorts = [ 22 16509 ];  # SSH and libvirt
+      allowedUDPPorts = [ 67 68 ];     # DHCP
+      trustedInterfaces = [ "virbr1" ];
+    };
   };
 
   # Enable IP forwarding
@@ -50,6 +55,15 @@
     "net.ipv4.ip_forward" = 1;
     "net.ipv4.conf.all.forwarding" = 1;
   };
+
+  # System packages for VM management
+  environment.systemPackages = with pkgs; [
+    virt-manager
+    virt-viewer
+    bridge-utils
+    iptables
+    netcat
+  ];
 
   # Emergency network recovery service
   systemd.services.network-emergency = {
@@ -62,28 +76,24 @@
         echo "=== EMERGENCY NETWORK RECOVERY ==="
         
         # Stop router VM
-        ${pkgs.libvirt}/bin/virsh destroy router-vm 2>/dev/null || true
+        /run/current-system/sw/bin/virsh destroy router-vm 2>/dev/null || true
         
         # Remove device from VFIO
-        echo "${config.hardware.vmRouter.primaryDeviceId}" > /sys/bus/pci/drivers/vfio-pci/remove_id 2>/dev/null || true
-        echo "${config.hardware.vmRouter.primaryPCI}" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
+        echo "8086:a840" > /sys/bus/pci/drivers/vfio-pci/remove_id 2>/dev/null || true
+        echo "0000:00:14.3" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
         
         # Rebind to original driver
-        echo "${config.hardware.vmRouter.primaryPCI}" > /sys/bus/pci/drivers_probe 2>/dev/null || true
+        echo "0000:00:14.3" > /sys/bus/pci/drivers_probe 2>/dev/null || true
         
         # Load network module
-        ${pkgs.kmod}/bin/modprobe ${config.hardware.vmRouter.primaryDriver}
+        /run/current-system/sw/bin/modprobe iwlwifi
         
         # Start NetworkManager
-        ${pkgs.systemd}/bin/systemctl start NetworkManager
+        /run/current-system/sw/bin/systemctl start NetworkManager
         
         echo "Emergency recovery completed"
+        echo "You should now have network access"
       '';
     };
-  };
-  
-  # Create alias for emergency recovery
-  environment.shellAliases = {
-    emergency-network = "sudo systemctl start network-emergency";
   };
 }

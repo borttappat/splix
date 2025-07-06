@@ -20,7 +20,7 @@ Compatibility score: 8/10
 
 2. **Setup VM:**
    ```bash
-   cd /home/traum/nixarium/scripts/generated-configs
+   cd /home/traum/splix/scripts/generated-configs
    sudo ./setup-vm.sh
    ```
 

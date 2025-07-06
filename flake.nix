@@ -31,6 +31,27 @@
             ./hosts/router-host/configuration.nix
           ];
         };
+
+        # Router VM configuration
+        router-vm = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            ./modules/router-vm-config.nix
+            {
+              fileSystems."/" = {
+                device = "/dev/vda";
+                fsType = "ext4";
+              };
+              boot.loader.grub.device = "/dev/vda";
+              system.stateVersion = "24.05";
+            }
+          ];
+        };
+      };
+
+      # Packages for building VM images
+      packages.${system} = {
+        router-vm-image = self.nixosConfigurations.router-vm.config.system.build.qcow2;
       };
 
       # Development shell
@@ -45,6 +66,7 @@
         shellHook = ''
           echo "NixOS VM Router Development Environment"
           echo "Commands:"
+          echo "  nix build .#router-vm-image - Build router VM"
           echo "  nixos-rebuild switch --flake .#router-host - Apply config"
           echo "  emergency-network - Emergency network recovery"
         '';
