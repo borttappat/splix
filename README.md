@@ -6,6 +6,40 @@ A complete NixOS-based VM router system with hardware passthrough for secure net
 
 Splix automatically sets up a virtualized router environment where your primary network interface is passed through to a router VM, providing strong isolation between work and leisure environments while maintaining reliable network connectivity.
 
+## VM Router Setup Flow
+
+### Fresh Machine Setup Process
+
+Fresh Machine → Hardware Detection → Config Generation → Safe VM Testing → Deployment Ready
+     │                    │                  │                    │              │
+     │              [Compatibility         [NixOS Configs    [QEMU Testing]   [Libvirt Ready]
+     │               Check 8/10]            Generated]                          
+     │                    │                  │                    │              │
+     └─── git clone ──────┼──────────────────┼────────────────────┼──────────────┘
+                          │                  │                    │
+                    hardware-results.env   modules/          Router VM works
+                                          generated configs
+
+### Deployment Sequence (Safe → Passthrough)
+
+Phase 1: Safe Testing          Phase 2: Point of No Return       Phase 3: Production
+┌─────────────────────┐       ┌─────────────────────────┐       ┌──────────────────────┐
+│ Host: Normal WiFi   │  ──▶  │ Host: WiFi → VFIO       │  ──▶  │ Router VM: WiFi Card │
+│ Router VM: virtio   │       │ Router VM: virtio       │       │ Guest VMs: Bridge    │
+│ Risk: None          │       │ Risk: Network loss      │       │ Risk: VM failure     │
+└─────────────────────┘       └─────────────────────────┘       └──────────────────────┘
+     libvirt testing                reboot required                 production ready
+
+### Final Architecture
+
+Internet ── WiFi Card (Passthrough) ── Router VM ── Internal Bridge
+                │                         │              │
+        Emergency Recovery          [DHCP/DNS/NAT]   Guest VMs
+        (restore host wifi)         [SSH Management]  │    │
+                                                   Pentest Work
+                                                     VM    VM
+
+
 ### Architecture
 
 ```
