@@ -54,8 +54,6 @@ step3_prepare_modules() {
     cp "$PROJECT_ROOT/scripts/generated-configs/router-vm-config.nix" "$PROJECT_ROOT/modules/"
     
     # Fix deprecated services and packages
-    sed -i '/services.dhcpd4/,/};/d' "$PROJECT_ROOT/modules/router-vm-config.nix"
-    sed -i 's/wireless-tools/wirelesstools/' "$PROJECT_ROOT/modules/router-vm-config.nix"
     
     # Add to git for nix flakes
     git add "$PROJECT_ROOT/modules/router-vm-config.nix"
