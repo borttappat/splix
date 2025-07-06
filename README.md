@@ -29,9 +29,10 @@ Phase 1: Safe Testing          Phase 2: Point of No Return       Phase 3: Produc
 │ Risk: None          │       │ Risk: Network loss      │       │ Risk: VM failure     │
 └─────────────────────┘       └─────────────────────────┘       └──────────────────────┘
      libvirt testing                reboot required                 production ready
+```
 
 ### Final Architecture
-
+```
 Internet ── WiFi Card (Passthrough) ── Router VM ── Internal Bridge
                 │                         │              │
         Emergency Recovery          [DHCP/DNS/NAT]   Guest VMs
@@ -39,15 +40,6 @@ Internet ── WiFi Card (Passthrough) ── Router VM ── Internal Bridge
                                                    Pentest Work
                                                      VM    VM
 
-```
-### Architecture
-
-```
-Internet → WiFi Card (Passthrough) → Router VM → Internal Network
-                                       ↓
-                Host Machine ← Emergency Recovery
-                                       ↓
-                            [Pentesting VM] [Leisure VM]
 ```
 
 ### Key Features
