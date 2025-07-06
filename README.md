@@ -9,7 +9,7 @@ Splix automatically sets up a virtualized router environment where your primary 
 ## VM Router Setup Flow
 
 ### Fresh Machine Setup Process
-
+```
 Fresh Machine → Hardware Detection → Config Generation → Safe VM Testing → Deployment Ready
      │                    │                  │                    │              │
      │              [Compatibility         [NixOS Configs    [QEMU Testing]   [Libvirt Ready]
@@ -39,7 +39,7 @@ Internet ── WiFi Card (Passthrough) ── Router VM ── Internal Bridge
                                                    Pentest Work
                                                      VM    VM
 
-
+```
 ### Architecture
 
 ```
