@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/run/current-system/sw/bin/bash
 # hardware-identify.sh - Identify system requirements for VM router setup
 
 set -euo pipefail

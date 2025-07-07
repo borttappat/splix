@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/run/current-system/sw/bin/bash
 # Setup router VM with passthrough
 
 set -euo pipefail

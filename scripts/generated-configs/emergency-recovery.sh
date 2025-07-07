@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/run/current-system/sw/bin/bash
 # Emergency network recovery script
 
 set -euo pipefail

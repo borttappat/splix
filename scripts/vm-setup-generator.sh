@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/run/current-system/sw/bin/bash
 # vm-setup-generator.sh - Generate VM router setup with passthrough and recovery
 
 set -euo pipefail
