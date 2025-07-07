@@ -256,17 +256,6 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << EOF
   };
 
   # DHCP server for guest VMs
-  services.dhcpd4 = {
-    enable = true;
-    interfaces = [ "enp2s0" ];  # Management interface
-    extraConfig = ''
-      subnet 192.168.100.0 netmask 255.255.255.0 {
-        range 192.168.100.10 192.168.100.50;
-        option routers 192.168.100.1;
-        option domain-name-servers 8.8.8.8, 1.1.1.1;
-      }
-    '';
-  };
 
   # DNS server
   services.dnsmasq = {
