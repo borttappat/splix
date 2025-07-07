@@ -49,7 +49,7 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
           pciutils usbutils iproute2 bridge-utils
-          qemu libvirt virt-manager
+          qemu qemu-utils libvirt virt-manager
           netcat nmap iperf3
           git jq
         ];
