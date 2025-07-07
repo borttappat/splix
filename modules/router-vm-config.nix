@@ -9,7 +9,7 @@
   
   # Enable WiFi and networking
   networking = {
-    hostName = "router-vm";
+    hostName = "${realUser}-vm";
     wireless.enable = true;
     wireless.networks = {
       # Configure your WiFi network here
@@ -61,10 +61,10 @@
   ];
 
   # Auto-login for console access
-  services.getty.autologinUser = "router";
+  services.getty.autologinUser = "${realUser}";
   
-  # Create router user
-  users.users.router = {
+  # Create ${realUser} user
+  users.users.${realUser} = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
     # Add your SSH keys here

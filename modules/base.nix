@@ -32,9 +32,9 @@
   };
   
   # User configuration
-  users.users.traum = {
+  users.users.${realUser} = {
     isNormalUser = true;
-    description = "traum";
+    description = "${realUser}";
     extraGroups = [ "networkmanager" "wheel" "libvirtd" "kvm" ];
     packages = with pkgs; [ firefox tree ];
   };

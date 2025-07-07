@@ -12,17 +12,14 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
-      # NixOS configurations
       nixosConfigurations = {
-        # VM Router Host configuration
+        # VM Router Host configuration (imports existing /etc/nixos)
         router-host = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
-            # Import local hardware config
-            ./hosts/router-host/hardware-configuration.nix
-            
-            # Base system configuration
-            ./modules/base.nix
+            # Import existing system configuration
+            /etc/nixos/configuration.nix
+            /etc/nixos/hardware-configuration.nix
             
             # VM router passthrough configuration
             ./modules/vm-router/host-passthrough.nix
@@ -49,12 +46,6 @@
         };
       };
 
-      # Packages for building VM images
-      packages.${system} = {
-        router-vm-image = self.nixosConfigurations.router-vm.config.system.build.qcow2;
-      };
-
-      # Development shell
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
           pciutils usbutils iproute2 bridge-utils
@@ -62,14 +53,6 @@
           netcat nmap iperf3
           git jq
         ];
-        
-        shellHook = ''
-          echo "NixOS VM Router Development Environment"
-          echo "Commands:"
-          echo "  nix build .#router-vm-image - Build router VM"
-          echo "  nixos-rebuild switch --flake .#router-host - Apply config"
-          echo "  emergency-network - Emergency network recovery"
-        '';
       };
     };
 }
