@@ -53,7 +53,7 @@
 
   # Essential packages
   environment.systemPackages = with pkgs; [
-    wireless-tools
+    wirelesstools
     iw
     tcpdump
     netcat

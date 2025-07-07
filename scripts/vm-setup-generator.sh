@@ -281,7 +281,7 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << EOF
 
   # Essential packages
   environment.systemPackages = with pkgs; [
-    wireless-tools
+    wirelesstools
     iw
     tcpdump
     netcat
