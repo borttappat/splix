@@ -67,7 +67,7 @@ step4_build_test() {
     prompt
     
     cd "$PROJECT_ROOT"
-    nix build .#nixosConfigurations.router-vm.config.system.build.vm
+    nix --experimental-features "nix-command flakes" build .#nixosConfigurations.router-vm.config.system.build.vm
     
     log "Router VM built successfully!"
     log "Starting test VM..."

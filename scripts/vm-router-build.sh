@@ -41,7 +41,7 @@ build_router_system() {
             ;;
         "VM-test")
             log "Building router VM for testing..."
-            nix build --impure ".#nixosConfigurations.router-vm.config.system.build.vm"
+            nix --experimental-features "nix-command flakes" build --impure ".#nixosConfigurations.router-vm.config.system.build.vm"
             ;;
         *)
             error "Unknown target: $target"
