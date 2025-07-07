@@ -137,6 +137,11 @@ cat > "$CONFIG_DIR/host-passthrough.nix" << EOF
         /run/current-system/sw/bin/systemctl start NetworkManager
         
         echo "Emergency recovery completed"
+      ';
+    };
+  };
+  # Add current user to virtualization groups
+  users.users.$USER.extraGroups = [ "libvirtd" "kvm" "qemu-libvirtd" ];
         echo "You should now have network access"
       '';
     };
