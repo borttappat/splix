@@ -26,3 +26,16 @@
     "net.core.wmem_max" = 134217728;
   };
 }
+
+  # Virtualization support for VM router
+  virtualisation.libvirtd = {
+    enable = true;
+    qemu = {
+      package = pkgs.qemu;
+      swtpm.enable = true;
+      ovmf.enable = true;
+    };
+  };
+  
+  # Add current user to virtualization groups
+  users.users.traum.extraGroups = [ "libvirtd" "kvm" "qemu-libvirtd" ];
