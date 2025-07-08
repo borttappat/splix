@@ -14,6 +14,22 @@
     {
       nixosConfigurations = {
         # VM Router Host configuration (imports existing /etc/nixos)
+        # VM Router Host TEST configuration (safe for testing)
+        router-host-test = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            # Import existing system configuration
+            /etc/nixos/configuration.nix
+            /etc/nixos/hardware-configuration.nix
+            
+            # VM router TEST configuration (keeps NetworkManager)
+            ./modules/vm-router/host-test.nix
+            
+            # Host-specific configuration
+            ./hosts/router-host/configuration.nix
+          ];
+        };
+
         router-host = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [

@@ -37,7 +37,7 @@ build_router_system() {
     case "$target" in
         "router-host")
             log "Building host configuration with passthrough..."
-            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ".#router-host"
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ".#router-host-test"
             ;;
         "VM-test")
             log "Building router VM for testing..."

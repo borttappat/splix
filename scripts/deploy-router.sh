@@ -57,7 +57,7 @@ apply_passthrough_config() {
     [[ "$confirm" == "yes" ]] || die "Aborted"
     
     log "Applying host passthrough configuration..."
-    sudo nixos-rebuild switch --flake "$PROJECT_ROOT#router-host"
+    sudo nixos-rebuild switch --flake "$PROJECT_ROOT#router-host-test"
     
     log "Host configuration applied"
     log "REBOOT REQUIRED to activate passthrough"
