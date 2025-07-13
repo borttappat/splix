@@ -174,7 +174,7 @@ pci_func_hex="0x$pci_func"
 
 cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
 <domain type='kvm'>
-  <n>router-vm</n>
+  <name>router-vm</name>
   <memory unit='KiB'>2097152</memory>
   <currentMemory unit='KiB'>2097152</currentMemory>
   <vcpu placement='static'>2</vcpu>
@@ -245,7 +245,7 @@ echo "3. Generating VM test configuration (virtio)..."
 
 cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
 <domain type='kvm'>
-  <n>router-vm-virtio</n>
+  <name>router-vm-virtio</name>
   <memory unit='KiB'>2097152</memory>
   <currentMemory unit='KiB'>2097152</currentMemory>
   <vcpu placement='static'>2</vcpu>
