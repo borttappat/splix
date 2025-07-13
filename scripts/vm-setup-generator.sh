@@ -6,39 +6,13 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CONFIG_DIR="$SCRIPT_DIR/generated-configs"
 
-# Function to detect OVMF firmware paths
+# Function to detect OVMF firmware paths - now always uses auto-detection
 detect_ovmf_paths() {
-    local ovmf_code_path=""
-    local ovmf_vars_path=""
-    
-    # Try common NixOS OVMF locations
-    for path in "/run/current-system/sw/share/ovmf" "/nix/store/"*"OVMF"*"/FV"; do
-        if [[ -f "$path/OVMF_CODE.fd" ]]; then
-            ovmf_code_path="$path/OVMF_CODE.fd"
-            ovmf_vars_path="$path/OVMF_VARS.fd"
-            break
-        fi
-    done
-    
-    # Fallback: use find command
-    if [[ -z "$ovmf_code_path" ]]; then
-        ovmf_code_path=$(find /nix/store -name "OVMF_CODE.fd" 2>/dev/null | head -1)
-        if [[ -n "$ovmf_code_path" ]]; then
-            ovmf_vars_path="${ovmf_code_path%/*}/OVMF_VARS.fd"
-        fi
-    fi
-    
-    # Export for use in XML generation
-    export OVMF_CODE_PATH="$ovmf_code_path"
-    export OVMF_VARS_PATH="$ovmf_vars_path"
-    
-    if [[ -z "$ovmf_code_path" ]]; then
-        echo "WARNING: Could not find OVMF firmware files. Using auto-detection."
-        export USE_FIRMWARE_AUTO="true"
-    else
-        echo "Found OVMF firmware: $ovmf_code_path"
-        export USE_FIRMWARE_AUTO="false"
-    fi
+    # Always prefer auto-detection for better compatibility
+    echo "Using OVMF auto-detection for maximum compatibility"
+    export USE_FIRMWARE_AUTO="true"
+    export OVMF_CODE_PATH=""
+    export OVMF_VARS_PATH=""
 }
 
 # Check if hardware results exist
@@ -200,27 +174,13 @@ pci_func_hex="0x$pci_func"
 
 cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
 <domain type='kvm'>
-  <name>router-vm</name>
+  <n>router-vm</n>
   <memory unit='KiB'>2097152</memory>
   <currentMemory unit='KiB'>2097152</currentMemory>
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-EOF
-
-# Add OVMF configuration based on detection results
-if [[ "$USE_FIRMWARE_AUTO" == "true" ]]; then
-    cat >> "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
     <firmware>efi</firmware>
-EOF
-else
-    cat >> "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
-    <loader readonly='yes' type='pflash'>$OVMF_CODE_PATH</loader>
-    <nvram>/var/lib/libvirt/qemu/nvram/router-vm_VARS.fd</nvram>
-EOF
-fi
-
-cat >> "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -285,27 +245,13 @@ echo "3. Generating VM test configuration (virtio)..."
 
 cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
 <domain type='kvm'>
-  <name>router-vm-virtio</name>
+  <n>router-vm-virtio</n>
   <memory unit='KiB'>2097152</memory>
   <currentMemory unit='KiB'>2097152</currentMemory>
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-EOF
-
-# Add OVMF configuration for test VM too
-if [[ "$USE_FIRMWARE_AUTO" == "true" ]]; then
-    cat >> "$CONFIG_DIR/router-vm-virtio.xml" << EOF
     <firmware>efi</firmware>
-EOF
-else
-    cat >> "$CONFIG_DIR/router-vm-virtio.xml" << EOF
-    <loader readonly='yes' type='pflash'>$OVMF_CODE_PATH</loader>
-    <nvram>/var/lib/libvirt/qemu/nvram/router-vm-virtio_VARS.fd</nvram>
-EOF
-fi
-
-cat >> "$CONFIG_DIR/router-vm-virtio.xml" << EOF
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -572,17 +518,7 @@ Generated on $(date) for hardware:
 - Compatibility Score: $COMPATIBILITY_SCORE/10
 
 ## OVMF Configuration
-- Auto-detection: $USE_FIRMWARE_AUTO
-EOF
-
-if [[ "$USE_FIRMWARE_AUTO" == "false" ]]; then
-    cat >> "$CONFIG_DIR/README.md" << EOF
-- OVMF Code: $OVMF_CODE_PATH
-- OVMF Vars: $OVMF_VARS_PATH
-EOF
-fi
-
-cat >> "$CONFIG_DIR/README.md" << EOF
+- Auto-detection: $USE_FIRMWARE_AUTO (always enabled for compatibility)
 
 ## Quick Testing (Safe)
 
@@ -644,10 +580,7 @@ echo "  - README.md                     (Usage instructions)"
 echo
 echo "Hardware-specific details:"
 echo "  - PCI Address: $PRIMARY_PCI (parsed as bus=$pci_bus_hex slot=$pci_slot_hex func=$pci_func_hex)"
-echo "  - OVMF Detection: $USE_FIRMWARE_AUTO"
-if [[ "$USE_FIRMWARE_AUTO" == "false" ]]; then
-    echo "  - OVMF Path: $OVMF_CODE_PATH"
-fi
+echo "  - OVMF Detection: $USE_FIRMWARE_AUTO (auto-detection for maximum compatibility)"
 echo
 echo "Next steps:"
 echo "1. Test with virtio networking: sudo virsh define $CONFIG_DIR/router-vm-virtio.xml"
