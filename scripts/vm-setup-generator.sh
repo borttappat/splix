@@ -376,20 +376,6 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << EOF
     "net.ipv4.conf.all.forwarding" = 1;
   };
 
-  # DHCP server for guest VMs
-  services.dhcpd4 = {
-    enable = true;
-    interfaces = [ "eth1" ];
-    extraConfig = ''
-      subnet 192.168.100.0 netmask 255.255.255.0 {
-        range 192.168.100.10 192.168.100.100;
-        option routers 192.168.100.1;
-        option domain-name-servers 1.1.1.1, 8.8.8.8;
-        default-lease-time 86400;
-        max-lease-time 604800;
-      }
-    '';
-  };
 
   # DNS server
   services.dnsmasq = {
@@ -417,7 +403,7 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << EOF
   # System packages
   environment.systemPackages = with pkgs; [
     vim wget curl htop iftop tcpdump
-    iw wireless-tools iproute2
+    iw iproute2
   ];
 
   # Create admin user
