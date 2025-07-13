@@ -442,6 +442,12 @@ EOF
 
 echo "   ✓ Router VM config: $CONFIG_DIR/router-vm-config.nix"
 
+# Copy router VM config to modules directory for flake
+echo "4. Copying router VM config to modules..."
+mkdir -p "$SCRIPT_DIR/../modules"
+cp "$CONFIG_DIR/router-vm-config.nix" "$SCRIPT_DIR/../modules/"
+echo "   ✓ Router VM config copied to modules/router-vm-config.nix"
+
 # 5. Generate emergency recovery script
 echo "5. Generating emergency recovery script..."
 
