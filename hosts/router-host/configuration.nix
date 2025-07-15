@@ -2,8 +2,8 @@
 { config, lib, pkgs, ... }:
 
 {
-  # Host-specific settings
-  networking.hostName = "router-host";
+  # Host-specific settings - use mkForce to override /etc/nixos
+  networking.hostName = lib.mkForce "router-host";
   
   # Additional packages for this host
   environment.systemPackages = with pkgs; [
@@ -25,8 +25,7 @@
     "net.core.rmem_max" = 134217728;
     "net.core.wmem_max" = 134217728;
   };
-}
-
+  
   # Virtualization support for VM router
   virtualisation.libvirtd = {
     enable = true;
@@ -36,6 +35,4 @@
       ovmf.enable = true;
     };
   };
-  
-  # Add current user to virtualization groups
-  users.users.traum.extraGroups = [ "libvirtd" "kvm" "qemu-libvirtd" ];
+}

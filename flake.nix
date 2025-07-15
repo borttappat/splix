@@ -13,9 +13,8 @@
     in
     {
       nixosConfigurations = {
-        # VM Router Host configuration (imports existing /etc/nixos)
-        # VM Router Host TEST configuration (safe for testing)
-        router-host-test = nixpkgs.lib.nixosSystem {
+        # Option 1: Import from /etc/nixos (for initial testing)
+        router-host-import = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
             # Import existing system configuration
@@ -25,23 +24,20 @@
             # VM router TEST configuration (keeps NetworkManager)
             ./modules/vm-router/host-test.nix
             
-            # Host-specific configuration
+            # Host-specific configuration with mkForce
             ./hosts/router-host/configuration.nix
           ];
         };
 
+        # Option 2: Standalone configuration (recommended for passthrough)
         router-host = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
-            # Import existing system configuration
-            /etc/nixos/configuration.nix
+            # Hardware configuration - generate this or import from /etc/nixos
             /etc/nixos/hardware-configuration.nix
             
-            # VM router passthrough configuration
-            ./modules/vm-router/host-passthrough.nix
-            
-            # Host-specific configuration
-            ./hosts/router-host/configuration.nix
+            # Complete standalone passthrough configuration
+            ./modules/vm-router/host-passthrough-standalone.nix
           ];
         };
 

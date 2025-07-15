@@ -1,4 +1,6 @@
-#!/run/current-system/sw/bin/bash
+#!/usr/bin/env bash
+# Router VM deployment script with passthrough support
+
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,71 +13,25 @@ die() { error "$*"; exit 1; }
 check_prerequisites() {
     log "Checking prerequisites..."
     
-    [[ -f "$PROJECT_ROOT/hardware-results.env" ]] || die "Run hardware detection first"
+    # Check if hardware detection was run
+    [[ -f "$PROJECT_ROOT/hardware-results.env" ]] || die "Run ./scripts/hardware-identify.sh first"
     
-    source "$PROJECT_ROOT/hardware-results.env"
-    [[ "$RECOMMENDATION" == "PROCEED" ]] || die "Hardware not suitable (score: $COMPATIBILITY_SCORE)"
+    # Check if configs were generated
+    [[ -d "$SCRIPT_DIR/generated-configs" ]] || die "Run ./scripts/vm-setup-generator.sh first"
     
-    systemctl is-active --quiet libvirtd || die "libvirtd not running"
-    
-    # Check if generated configs exist
-    [[ -f "$SCRIPT_DIR/generated-configs/router-vm-virtio.xml" ]] || die "Generated configs not found. Run vm-setup-generator.sh first"
+    # Check for root/sudo
+    [[ $EUID -eq 0 ]] || [[ -n "${SUDO_USER:-}" ]] || die "Run with sudo"
     
     log "Prerequisites OK"
 }
 
-build_router_vm() {
-    log "Building router VM image..."
-    
-    cd "$PROJECT_ROOT"
-    nix build .#nixosConfigurations.router-vm.config.system.build.vm
-    
-    log "Router VM built successfully"
-}
-
-test_router_vm_virtio() {
-    log "Testing router VM with virtio networking..."
-    
-    # Ensure qemu-img is available
-    if ! command -v qemu-img >/dev/null 2>&1; then
-        log "qemu-img not found in PATH, using nix-shell..."
-        nix-shell -p qemu --run "sudo qemu-img create -f qcow2 /var/lib/libvirt/images/router-vm.qcow2 10G" || die "Failed to create VM disk"
-    else
-        # Create VM disk if needed
-        sudo mkdir -p /var/lib/libvirt/images
-        if [[ ! -f /var/lib/libvirt/images/router-vm.qcow2 ]]; then
-            sudo qemu-img create -f qcow2 /var/lib/libvirt/images/router-vm.qcow2 10G
-        fi
-    fi
-    
-    # Use generated XML configuration
-    local xml_file="$SCRIPT_DIR/generated-configs/router-vm-virtio.xml"
-    
-    # Define and start virtio version
-    sudo virsh define "$xml_file"
-    sudo virsh start router-vm-virtio
-    
-    log "Router VM started with virtio networking"
-    log "Connect with: sudo virsh console router-vm-virtio"
-    log "Exit console with: Ctrl+]"
-    log ""
-    log "Test checklist in VM:"
-    log "  1. Verify boot and login"
-    log "  2. Check interfaces: ip addr show"
-    log "  3. Test connectivity: ping 8.8.8.8"
-    log "  4. Verify DHCP service: systemctl status dhcpd4"
-    log ""
-    log "When testing is complete, stop VM with: sudo virsh destroy router-vm-virtio"
-}
-
 test_emergency_recovery() {
-    log "Testing emergency recovery system..."
+    log "Testing emergency recovery..."
     
     local recovery_script="$SCRIPT_DIR/generated-configs/emergency-recovery.sh"
     [[ -f "$recovery_script" ]] || die "Emergency recovery script not found"
     
-    log "Emergency recovery script: $recovery_script"
-    log "This will:"
+    log "Emergency recovery will:"
     log "  1. Stop any running router VMs"
     log "  2. Unbind WiFi card from VFIO (if bound)"
     log "  3. Restore original network driver"
@@ -97,6 +53,22 @@ apply_passthrough_config() {
     log "This will apply host passthrough configuration"
     log "You will lose host network access until router VM is running"
     log ""
+    log "Configuration options:"
+    log "  1. router-host-import - Uses /etc/nixos imports (may have conflicts)"
+    log "  2. router-host - Standalone configuration (recommended)"
+    log ""
+    
+    read -p "Which configuration to use? (1/2): " config_choice
+    
+    local flake_target
+    case "$config_choice" in
+        1) flake_target="router-host-import" ;;
+        2) flake_target="router-host" ;;
+        *) die "Invalid choice" ;;
+    esac
+    
+    log "Using configuration: $flake_target"
+    log ""
     log "Ensure you have tested:"
     log "  ✓ Router VM boots and works with virtio"
     log "  ✓ Emergency recovery restores networking"
@@ -108,13 +80,13 @@ apply_passthrough_config() {
     
     log "Applying host passthrough configuration..."
     
-    # Use the generated host configuration
-    if [[ -f "$SCRIPT_DIR/generated-configs/host-passthrough.nix" ]]; then
-        log "Using generated host configuration"
-        sudo nixos-rebuild switch --flake "$PROJECT_ROOT#router-host-test"
-    else
-        die "Generated host configuration not found"
-    fi
+    # Copy emergency recovery script to a safe location
+    sudo cp "$SCRIPT_DIR/generated-configs/emergency-recovery.sh" /root/
+    sudo chmod +x /root/emergency-recovery.sh
+    
+    # Apply the configuration
+    cd "$PROJECT_ROOT"
+    sudo nixos-rebuild switch --flake ".#${flake_target}" --impure
     
     log "Host configuration applied"
     log "REBOOT REQUIRED to activate passthrough"
@@ -126,20 +98,26 @@ deploy_passthrough_vm() {
     
     # Check that we're in passthrough mode
     source "$PROJECT_ROOT/hardware-results.env"
-    if lspci -s "$PRIMARY_PCI" | grep -q "Kernel driver in use: $PRIMARY_DRIVER"; then
-        log "WARNING: Device still bound to $PRIMARY_DRIVER"
-        log "Passthrough may not be active. Did you reboot after applying host config?"
+    
+    if lspci -nnk -s "$PRIMARY_PCI" | grep -q "Kernel driver in use: vfio-pci"; then
+        log "✓ Device bound to VFIO"
+    else
+        log "WARNING: Device not bound to VFIO"
+        log "Current driver:"
+        lspci -nnk -s "$PRIMARY_PCI" | grep "Kernel driver"
         read -p "Continue anyway? (y/n): " continue_anyway
         [[ "$continue_anyway" =~ ^[Yy]$ ]] || die "Aborted"
     fi
     
-    # Stop virtio version if running
-    sudo virsh destroy router-vm-virtio 2>/dev/null || true
-    sudo virsh undefine router-vm-virtio 2>/dev/null || true
-    
-    # Deploy passthrough version using generated XML
+    # Deploy passthrough VM
     local xml_file="$SCRIPT_DIR/generated-configs/router-vm-passthrough.xml"
     [[ -f "$xml_file" ]] || die "Generated passthrough XML not found"
+    
+    # Stop and remove any existing router VMs
+    for vm in router-vm router-vm-virtio router-vm-passthrough; do
+        sudo virsh destroy "$vm" 2>/dev/null || true
+        sudo virsh undefine "$vm" 2>/dev/null || true
+    done
     
     sudo virsh define "$xml_file"
     sudo virsh start router-vm
@@ -147,86 +125,75 @@ deploy_passthrough_vm() {
     log "Router VM started with WiFi passthrough"
     log "Connect with: sudo virsh console router-vm"
     log ""
-    log "Configure WiFi in VM:"
-    log "  1. Connect to console"
-    log "  2. Configure WiFi: nmcli device wifi connect \"SSID\" password \"PASSWORD\""
-    log "  3. Verify internet: ping 8.8.8.8"
-    log "  4. Check guest bridge: ip addr show eth1"
-    log ""
-    log "If issues occur, run emergency recovery: sudo $SCRIPT_DIR/generated-configs/emergency-recovery.sh"
+    log "Next steps in VM:"
+    log "  1. Login as admin/admin"
+    log "  2. Check WiFi: ip link show"
+    log "  3. Configure WiFi: nmcli device wifi connect 'SSID' password 'PASSWORD'"
+    log "  4. Verify internet: ping 8.8.8.8"
 }
 
-status_check() {
-    log "Router VM Status Check"
-    log "====================="
+show_status() {
+    log "Current system status:"
     
-    # Check VM status
-    log "Virtual Machines:"
-    sudo virsh list --all
-    
-    echo
-    log "Network Interfaces:"
-    ip addr show | grep -E "^[0-9]+:|inet "
-    
-    echo
-    # Check if hardware detection results exist
-    if [[ -f "$PROJECT_ROOT/hardware-results.env" ]]; then
-        source "$PROJECT_ROOT/hardware-results.env"
-        log "Hardware Status:"
-        log "  Primary Interface: $PRIMARY_INTERFACE ($PRIMARY_PCI)"
-        log "  Current Driver: $(lspci -s "$PRIMARY_PCI" | grep -o "Kernel driver in use: [a-z0-9_-]*" | cut -d: -f2 | xargs || echo "unknown")"
-        log "  Compatibility: $COMPATIBILITY_SCORE/10"
+    # Check IOMMU
+    if dmesg | grep -q "IOMMU enabled"; then
+        log "✓ IOMMU: Enabled"
+    else
+        log "✗ IOMMU: Not enabled"
     fi
     
-    echo
-    log "Emergency Recovery Available: $SCRIPT_DIR/generated-configs/emergency-recovery.sh"
-}
-
-show_help() {
-    echo "Router deployment script - follows safe VM-first sequence"
-    echo
-    echo "Usage: $0 <command>"
-    echo
-    echo "Commands:"
-    echo "  check       - Check prerequisites and system status"
-    echo "  build       - Build router VM image"
-    echo "  test        - Test router VM with virtio networking (safe)"
-    echo "  recovery    - Test emergency recovery system"
-    echo "  passthrough - Apply host passthrough config (DESTRUCTIVE)"
-    echo "  deploy      - Deploy router VM with passthrough"
-    echo "  status      - Show current system and VM status"
-    echo "  full        - Run complete testing sequence (check + build + test)"
-    echo ""
-    echo "Recommended sequence:"
-    echo "  1. $0 check       # Verify prerequisites"
-    echo "  2. $0 build       # Build router VM"
-    echo "  3. $0 test        # Test VM with safe networking"
-    echo "  4. $0 recovery    # Test emergency recovery"
-    echo "  5. $0 passthrough # Apply passthrough (point of no return)"
-    echo "  6. sudo reboot    # Activate VFIO passthrough"
-    echo "  7. $0 deploy      # Start router VM with WiFi passthrough"
+    # Check VFIO modules
+    if lsmod | grep -q vfio_pci; then
+        log "✓ VFIO modules: Loaded"
+    else
+        log "✗ VFIO modules: Not loaded"
+    fi
+    
+    # Check WiFi device
+    if [[ -f "$PROJECT_ROOT/hardware-results.env" ]]; then
+        source "$PROJECT_ROOT/hardware-results.env"
+        log "WiFi device: $PRIMARY_INTERFACE ($PRIMARY_PCI)"
+        log "Current driver: $(lspci -nnk -s "$PRIMARY_PCI" | grep "Kernel driver" | awk '{print $NF}')"
+    fi
+    
+    # Check VMs
+    log "Virtual machines:"
+    sudo virsh list --all | grep -E "(router-vm|State)" || true
 }
 
 main() {
     case "${1:-help}" in
-        "check") check_prerequisites ;;
-        "build") build_router_vm ;;
-        "test") test_router_vm_virtio ;;
-        "recovery") test_emergency_recovery ;;
-        "passthrough") apply_passthrough_config ;;
-        "deploy") deploy_passthrough_vm ;;
-        "status") status_check ;;
-        "full") 
+        check)
             check_prerequisites
-            build_router_vm
-            test_router_vm_virtio
-            echo
-            log "Testing complete! Next steps:"
-            log "  1. Test the router VM: sudo virsh console router-vm-virtio"
-            log "  2. Test emergency recovery: $0 recovery"
-            log "  3. When ready: $0 passthrough"
+            show_status
             ;;
-        *) show_help ;;
+        recovery-test)
+            check_prerequisites
+            test_emergency_recovery
+            ;;
+        passthrough)
+            check_prerequisites
+            apply_passthrough_config
+            ;;
+        deploy)
+            check_prerequisites
+            deploy_passthrough_vm
+            ;;
+        status)
+            show_status
+            ;;
+        *)
+            echo "VM Router Deployment Script"
+            echo ""
+            echo "Usage: $0 <command>"
+            echo ""
+            echo "Commands:"
+            echo "  check         - Check prerequisites and show status"
+            echo "  recovery-test - Test emergency recovery"
+            echo "  passthrough   - Apply passthrough config (point of no return)"
+            echo "  deploy        - Deploy router VM after reboot"
+            echo "  status        - Show current system status"
+            ;;
     esac
 }
 
