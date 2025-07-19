@@ -65,7 +65,7 @@ hardware_detection() {
     
     if [[ -f "hardware-results.env" ]]; then
         source hardware-results.env
-        local score="${HARDWARE_SCORE:-0}"
+        local score="${COMPATIBILITY_SCORE:-0}"
         log "Hardware detection complete. Compatibility: ${score}/10"
         
         if [[ "${score}" -lt 6 ]]; then
