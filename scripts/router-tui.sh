@@ -65,10 +65,11 @@ hardware_detection() {
     
     if [[ -f "hardware-results.env" ]]; then
         source hardware-results.env
-        log "Hardware detection complete. Compatibility: ${HARDWARE_SCORE:-0}/10"
+        local score="${HARDWARE_SCORE:-0}"
+        log "Hardware detection complete. Compatibility: ${score}/10"
         
-        if [[ "${HARDWARE_SCORE:-0}" -lt 6 ]]; then
-            error "Hardware compatibility too low (${HARDWARE_SCORE}/10). Cannot proceed safely."
+        if [[ "${score}" -lt 6 ]]; then
+            error "Hardware compatibility too low (${score}/10). Cannot proceed safely."
             return 1
         fi
     else
