@@ -65,11 +65,10 @@ hardware_detection() {
     
     if [[ -f "hardware-results.env" ]]; then
         source hardware-results.env
-        local score="${COMPATIBILITY_SCORE:-0}"
-        log "Hardware detection complete. Compatibility: ${score}/10"
+        log "Hardware detection complete. Compatibility: ${HARDWARE_SCORE:-0}/10"
         
-        if [[ "${score}" -lt 6 ]]; then
-            error "Hardware compatibility too low (${score}/10). Cannot proceed safely."
+        if [[ "${HARDWARE_SCORE:-0}" -lt 6 ]]; then
+            error "Hardware compatibility too low (${HARDWARE_SCORE}/10). Cannot proceed safely."
             return 1
         fi
     else
@@ -115,6 +114,13 @@ dotfiles_integration() {
         return 1
     fi
     
+    cd "$DOTFILES_DIR"
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        error "Dotfiles has uncommitted changes. Please commit or stash first."
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+    
     cd "$SPLIX_DIR"
     ./scripts/zephyrus-integration.sh
     
@@ -155,6 +161,11 @@ vm_testing() {
         return 1
     fi
     
+    if [[ ! -L "./result" ]] || [[ ! -x "./result/bin/run-router-vm-vm" ]]; then
+        error "VM build produced invalid result"
+        return 1
+    fi
+    
     log "Starting VM test..."
     cd "$SPLIX_DIR"
     ./scripts/router-vm-test.sh
@@ -170,39 +181,34 @@ deploy_host_config() {
     echo "This will:"
     echo "  - Apply VFIO passthrough configuration"
     echo "  - Bind WiFi card to VFIO driver"
-    echo "  - REQUIRE IMMEDIATE REBOOT"
+    echo "  - REQUIRE REBOOT to take effect"
     echo "  - Host will lose WiFi until router VM starts"
     echo
-    echo "Prerequisites:"
-    echo "  [OK] Physical access to machine"
-    echo "  [OK] Emergency recovery tested"
-    echo "  [OK] Alternative network available"
+    echo "Make sure you have:"
+    echo "  ✓ Physical access to the machine"
+    echo "  ✓ Tested emergency recovery"
+    echo "  ✓ Backup network access method"
     echo
-    read -p "Are you sure you want to proceed? [yes/NO]: " confirm
+    read -p "Are you SURE you want to proceed? Type 'yes' to continue: " confirm
     
     if [[ "$confirm" != "yes" ]]; then
         log "Deployment cancelled"
         return 0
     fi
     
-    log "Deploying host configuration..."
+    log "Creating system restore point..."
+    sudo nix-env -p /nix/var/nix/profiles/system --list-generations | tail -1 > "$SPLIX_DIR/.last-known-good"
+    
     cd "$DOTFILES_DIR"
+    log "Building and applying host configuration..."
     
-    if ! git diff --cached --quiet 2>/dev/null; then
-        log "Committing staged router configuration..."
-        git commit -m "Add router VM configuration for deployment"
-    fi
-    
-    log "Building and applying configuration..."
-    if ! nixos-rebuild boot; then
-        error "Failed to build configuration"
+    if ! sudo nixos-rebuild switch --flake .#zephyrus; then
+        error "Host configuration failed to apply"
         return 1
     fi
     
-    echo
-    echo "================================================================"
-    echo "  REBOOT REQUIRED - Router VM will start after reboot"
-    echo "================================================================"
+    log "Host configuration applied successfully"
+    log "REBOOT REQUIRED to activate VFIO passthrough"
     echo
     read -p "Reboot now? [y/N]: " reboot_confirm
     
@@ -288,43 +294,46 @@ show_status() {
 connect_to_router() {
     log "Connecting to router VM console..."
     
-    if ! sudo virsh list | grep -q "router-vm.*running"; then
-        error "Router VM is not running"
+    if ! sudo virsh list | grep -q "router-vm"; then
+        error "Router VM is not running. Start it first with option 6."
+        read -p "Press Enter to continue..."
         return 1
     fi
     
     log "Use Ctrl+] to exit console"
+    sleep 2
+    
     sudo virsh console router-vm
+    
+    read -p "Press Enter to continue..."
 }
 
 emergency_recovery() {
-    echo "================================================================"
-    echo "                 Emergency Network Recovery"
-    echo "================================================================"
-    echo
-    echo "This will:"
-    echo "  - Stop router VM"
-    echo "  - Unbind WiFi card from VFIO"
-    echo "  - Restore iwlwifi driver"
-    echo "  - Restart NetworkManager"
-    echo
-    read -p "Proceed with emergency recovery? [y/N]: " confirm
+    log "Running emergency network recovery..."
     
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        log "Running emergency recovery..."
+    if [[ -f "$SPLIX_DIR/scripts/generated-configs/emergency-recovery.sh" ]]; then
+        sudo "$SPLIX_DIR/scripts/generated-configs/emergency-recovery.sh"
+    else
+        log "Generated recovery script not found, using fallback..."
         
-        if [[ -f "$SPLIX_DIR/scripts/generated-configs/emergency-recovery.sh" ]]; then
-            cd "$SPLIX_DIR"
-            sudo ./scripts/generated-configs/emergency-recovery.sh
+        log "Stopping any running VMs..."
+        sudo virsh destroy router-vm 2>/dev/null || true
+        
+        log "Unloading VFIO modules..."
+        sudo modprobe -r vfio_pci vfio_iommu_type1 vfio 2>/dev/null || true
+        
+        log "Loading WiFi driver..."
+        sudo modprobe iwlwifi 2>/dev/null || true
+        
+        log "Restarting NetworkManager..."
+        sudo systemctl restart NetworkManager
+        
+        sleep 5
+        if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+            log "Network connectivity restored!"
         else
-            log "Using fallback recovery..."
-            sudo systemctl stop libvirtd || true
-            sudo modprobe -r vfio_pci || true
-            sudo modprobe iwlwifi || true
-            sudo systemctl restart NetworkManager
+            error "Network recovery may have failed. Try rebooting."
         fi
-        
-        log "Emergency recovery complete. Check network connectivity."
     fi
     
     read -p "Press Enter to continue..."
@@ -332,43 +341,46 @@ emergency_recovery() {
 
 cleanup_everything() {
     echo "================================================================"
-    echo "                 Complete Router Cleanup"
+    echo "                  Clean Up Everything"
     echo "================================================================"
     echo
     echo "This will:"
-    echo "  - Remove router VM and configs"
-    echo "  - Clean up dotfiles integration"
-    echo "  - Restore original flake.nix"
-    echo "  - Commit cleanup to git"
+    echo "  - Remove router-generated module from dotfiles"
+    echo "  - Restore original flake.nix from backup"
+    echo "  - Clean up git staging"
+    echo "  - Optionally rebuild system without router"
     echo
-    read -p "Proceed with complete cleanup? [y/N]: " confirm
+    read -p "Continue with cleanup? [y/N]: " confirm
     
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        log "Cleaning up router configuration..."
+        log "Starting cleanup..."
         
         cd "$DOTFILES_DIR"
         
         if [[ -d "modules/router-generated" ]]; then
-            git rm -r modules/router-generated/ || true
-            log "Removed router-generated module"
+            log "Removing router-generated module..."
+            rm -rf modules/router-generated
+            git rm -rf modules/router-generated 2>/dev/null || true
         fi
         
         if [[ -f "flake.nix.backup" ]]; then
+            log "Restoring original flake.nix..."
             mv flake.nix.backup flake.nix
             git add flake.nix
-            log "Restored original flake.nix"
         fi
         
-        git commit -m "Remove router VM configuration" || log "Nothing to commit"
+        git reset HEAD 2>/dev/null || true
         
-        log "Building clean configuration..."
-        nixos-rebuild boot
+        log "Cleanup complete"
+        echo
+        read -p "Rebuild system without router configs? [y/N]: " rebuild_confirm
         
-        cd "$SPLIX_DIR"
-        rm -rf scripts/generated-configs/ || true
-        rm -f hardware-results.env || true
-        
-        log "Cleanup complete. Reboot to apply clean configuration."
+        if [[ "$rebuild_confirm" =~ ^[Yy]$ ]]; then
+            log "Rebuilding system..."
+            sudo nixos-rebuild switch --flake .#zephyrus
+        fi
+    else
+        log "Cleanup cancelled"
     fi
     
     read -p "Press Enter to continue..."
@@ -431,4 +443,3 @@ main() {
 }
 
 main "$@"
-EOF

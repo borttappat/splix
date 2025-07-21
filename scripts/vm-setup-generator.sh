@@ -1,4 +1,4 @@
-#!/run/current-system/sw/bin/bash
+#!/usr/bin/env bash
 # vm-setup-generator.sh - Generate VM router setup with passthrough and recovery
 
 set -euo pipefail
@@ -16,13 +16,13 @@ detect_ovmf_paths() {
 }
 
 # Check if hardware results exist
-if [[ ! -f "$SCRIPT_DIR/hardware-results.env" ]]; then
+if [[ ! -f "$SCRIPT_DIR/../hardware-results.env" ]]; then
     echo "ERROR: hardware-results.env not found. Run hardware-identify.sh first."
     exit 1
 fi
 
 # Load hardware results
-source "$SCRIPT_DIR/hardware-results.env"
+source "$SCRIPT_DIR/../hardware-results.env"
 
 # Validate we have the minimum required info
 if [[ -z "${PRIMARY_INTERFACE:-}" || -z "${PRIMARY_PCI:-}" || -z "${PRIMARY_ID:-}" || -z "${PRIMARY_DRIVER:-}" ]]; then
@@ -54,111 +54,67 @@ echo
 mkdir -p "$CONFIG_DIR"
 
 # 1. Generate NixOS host configuration for passthrough
-echo "1. Generating NixOS host configuration..."
+echo "1. Generating host passthrough configuration..."
 
 cat > "$CONFIG_DIR/host-passthrough.nix" << EOF
-# Generated NixOS configuration for VM router passthrough
-# Generated on $(date)
-# Hardware: $PRIMARY_INTERFACE ($PRIMARY_ID) using $PRIMARY_DRIVER driver
-
 { config, lib, pkgs, ... }:
 
 {
-  # Enable IOMMU and VFIO for device passthrough
+  # Enable IOMMU for passthrough
   boot.kernelParams = [ 
     "intel_iommu=on" 
-    "iommu=pt"
+    "iommu=pt" 
     "vfio-pci.ids=$PRIMARY_ID"
   ];
-
-  # Load VFIO modules early
-  boot.kernelModules = [ "vfio" "vfio_iommu_type1" "vfio_pci" ];
   
-  # Blacklist the network driver on host to prevent conflicts
+  # Load VFIO modules
+  boot.kernelModules = [ "vfio" "vfio_iommu_type1" "vfio_pci" "vfio_virqfd" ];
   boot.blacklistedKernelModules = [ "$PRIMARY_DRIVER" ];
-
-  # Enable virtualization
+  
+  # Ensure libvirtd has access to VFIO devices
   virtualisation.libvirtd = {
     enable = true;
     qemu = {
-      package = pkgs.qemu;
+      package = pkgs.qemu_kvm;
+      runAsRoot = true;
+      swtpm.enable = true;
       ovmf = {
         enable = true;
-        packages = [ pkgs.OVMF ];
+        packages = [ pkgs.OVMF.fd ];
       };
-      swtpm.enable = true;
     };
   };
-
-  # Network configuration for VM bridge
-  networking = {
-    # Disable NetworkManager on host since primary interface will be passed through
-    networkmanager.enable = lib.mkForce false;
-    useNetworkd = true;
-    
-    # Create bridge for VM networking
-    bridges.virbr1 = {
-      interfaces = [];
-    };
-    
-    firewall = {
-      enable = true;
-      allowedTCPPorts = [ 22 16509 ];  # SSH and libvirt
-      allowedUDPPorts = [ 67 68 ];     # DHCP
-      trustedInterfaces = [ "virbr1" ];
-    };
+  
+  # Create network bridge for VM communication
+  networking.bridges.virbr1.interfaces = [];
+  networking.interfaces.virbr1.ipv4.addresses = [{
+    address = "192.168.100.1";
+    prefixLength = 24;
+  }];
+  
+  # Allow forwarding for VM network
+  networking.firewall = {
+    extraCommands = ''
+      iptables -A FORWARD -i virbr1 -j ACCEPT
+      iptables -A FORWARD -o virbr1 -j ACCEPT
+      iptables -t nat -A POSTROUTING -s 192.168.100.0/24 ! -d 192.168.100.0/24 -j MASQUERADE
+    '';
+    trustedInterfaces = [ "virbr1" ];
   };
-
-  # Enable IP forwarding
-  boot.kernel.sysctl = {
-    "net.ipv4.ip_forward" = 1;
-    "net.ipv4.conf.all.forwarding" = 1;
-  };
-
-  # System packages for VM management
-  environment.systemPackages = with pkgs; [
-    virt-manager
-    virt-viewer
-    bridge-utils
-    iptables
-    netcat
-  ];
-
-  # Emergency network recovery service
+  
+  # Emergency recovery service
   systemd.services.network-emergency = {
     description = "Emergency network recovery";
     serviceConfig = {
       Type = "oneshot";
+      ExecStart = "$CONFIG_DIR/emergency-recovery.sh";
       RemainAfterExit = false;
-      ExecStart = pkgs.writeScript "network-emergency" ''
-        #!/bin/bash
-        echo "=== EMERGENCY NETWORK RECOVERY ==="
-        
-        # Stop router VM
-        /run/current-system/sw/bin/virsh destroy router-vm 2>/dev/null || true
-        
-        # Remove device from VFIO
-        echo "$PRIMARY_ID" > /sys/bus/pci/drivers/vfio-pci/remove_id 2>/dev/null || true
-        echo "$PRIMARY_PCI" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
-        
-        # Rebind to original driver
-        echo "$PRIMARY_PCI" > /sys/bus/pci/drivers_probe 2>/dev/null || true
-        
-        # Load network module
-        /run/current-system/sw/bin/modprobe $PRIMARY_DRIVER
-        
-        # Start NetworkManager
-        /run/current-system/sw/bin/systemctl start NetworkManager
-        
-        echo "Emergency recovery completed"
-        echo "You should now have network access"
-      '';
     };
   };
 }
 EOF
 
-echo "   ✓ Host configuration: $CONFIG_DIR/host-passthrough.nix"
+echo "   ✓ Host passthrough config: $CONFIG_DIR/host-passthrough.nix"
 
 # 2. Generate VM domain XML with dynamic OVMF paths
 echo "2. Generating VM configuration (passthrough)..."
@@ -314,103 +270,97 @@ echo "   ✓ VM virtio test configuration: $CONFIG_DIR/router-vm-virtio.xml"
 # 4. Generate router VM NixOS configuration
 echo "4. Generating router VM NixOS configuration..."
 
-cat > "$CONFIG_DIR/router-vm-config.nix" << EOF
-# Router VM NixOS Configuration
-# Generated for hardware: $PRIMARY_INTERFACE ($PRIMARY_ID)
-
-{ config, lib, pkgs, ... }:
+cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
+{ config, pkgs, lib, ... }:
 
 {
   imports = [ ];
 
-  # Boot configuration
-  boot.loader.grub = {
-    enable = true;
-    device = "/dev/vda";
+  # Basic system configuration
+  boot.loader.grub.enable = true;
+  boot.loader.grub.device = "/dev/vda";
+  boot.loader.timeout = 1;
+
+  # Kernel modules for networking
+  boot.kernelModules = [ "af_packet" ];
+
+  # File systems
+  fileSystems."/" = {
+    device = "/dev/vda1";
+    fsType = "ext4";
+    autoResize = true;
   };
 
-  # Basic system settings
-  networking.hostName = "router-vm";
-  time.timeZone = "Europe/Stockholm";
-  
-  # Enable networking and routing
+  # Network configuration - Router mode
   networking = {
-    networkmanager.enable = false;
-    useNetworkd = true;
+    hostName = "router-vm";
     useDHCP = false;
     
-    # Configure interfaces
-    interfaces = {
-      # WAN interface (will be WiFi card in passthrough mode)
-      eth0 = {
-        useDHCP = true;  # Get internet from upstream
-      };
-      
-      # LAN interface for guest VMs
-      eth1 = {
-        ipv4.addresses = [{
-          address = "192.168.100.1";
-          prefixLength = 24;
-        }];
-      };
+    # WAN interface (gets internet from host via passthrough WiFi)
+    interfaces.wlan0 = {
+      useDHCP = true;
     };
     
-    # Enable IP forwarding for routing
-    firewall = {
-      enable = true;
-      allowedTCPPorts = [ 22 53 67 80 443 ];
-      allowedUDPPorts = [ 53 67 68 ];
+    # LAN interface (provides internet to host)
+    interfaces.eth0 = {
+      ipv4.addresses = [{
+        address = "192.168.100.2";
+        prefixLength = 24;
+      }];
     };
-    
-    # NAT configuration
+
+    # Enable forwarding and NAT
     nat = {
       enable = true;
-      externalInterface = "eth0";
-      internalInterfaces = [ "eth1" ];
+      externalInterface = "wlan0";
+      internalInterfaces = [ "eth0" ];
+    };
+    
+    firewall = {
+      enable = true;
+      trustedInterfaces = [ "eth0" ];
+      allowPing = true;
     };
   };
 
-  # Enable IP forwarding
-  boot.kernel.sysctl = {
-    "net.ipv4.ip_forward" = 1;
-    "net.ipv4.conf.all.forwarding" = 1;
-  };
-
-
-  # DNS server
+  # DHCP and DNS services
   services.dnsmasq = {
     enable = true;
     settings = {
-      server = [ "1.1.1.1" "8.8.8.8" ];
-      interface = "eth1";
-      dhcp-range = [ "192.168.100.10,192.168.100.100,24h" ];
+      interface = "eth0";
+      dhcp-range = "192.168.100.50,192.168.100.150,12h";
       dhcp-option = [
-        "option:router,192.168.100.1"
-        "option:dns-server,192.168.100.1"
+        "option:router,192.168.100.2"
+        "option:dns-server,192.168.100.2"
       ];
+      server = [ "8.8.8.8" "8.8.4.4" ];
+      cache-size = 1000;
     };
   };
 
-  # SSH for management
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = true;
-      PermitRootLogin = "yes";
-    };
-  };
-
-  # System packages
+  # Basic system packages
   environment.systemPackages = with pkgs; [
-    vim wget curl htop iftop tcpdump
-    iw iproute2
+    vim
+    tmux
+    htop
+    tcpdump
+    iptables
+    iproute2
+    networkmanager
+    dnsmasq
   ];
 
-  # Create admin user
+  # Enable NetworkManager for WiFi management
+  networking.networkmanager = {
+    enable = true;
+    unmanaged = [ "eth0" ];
+  };
+
+  # User configuration
   users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
-    password = "admin";  # Change this!
+    password = "admin";
   };
 
   # Allow passwordless sudo for admin user
@@ -428,8 +378,8 @@ EOF
 
 echo "   ✓ Router VM config: $CONFIG_DIR/router-vm-config.nix"
 
-# Copy router VM config to modules directory for flake
-echo "4. Copying router VM config to modules..."
+# 4.5 Copy router VM config to modules directory
+echo "4.5 Copying router VM config to modules..."
 mkdir -p "$SCRIPT_DIR/../modules"
 cp "$CONFIG_DIR/router-vm-config.nix" "$SCRIPT_DIR/../modules/"
 echo "   ✓ Router VM config copied to modules/router-vm-config.nix"
@@ -437,60 +387,61 @@ echo "   ✓ Router VM config copied to modules/router-vm-config.nix"
 # 5. Generate emergency recovery script
 echo "5. Generating emergency recovery script..."
 
-cat > "$CONFIG_DIR/emergency-recovery.sh" << 'EOF'
-#!/bin/bash
-# Emergency network recovery script
-# Generated automatically - do not edit manually
-
+cat > "$CONFIG_DIR/emergency-recovery.sh" << 'RECOVERY_SCRIPT'
+#!/usr/bin/env bash
 set -euo pipefail
 
 echo "=== EMERGENCY NETWORK RECOVERY ==="
 echo "This script will restore host network connectivity"
 echo
 
-# Stop router VM
-echo "1. Stopping router VM..."
-virsh destroy router-vm 2>/dev/null || true
-virsh destroy router-vm-virtio 2>/dev/null || true
-echo "   ✓ VMs stopped"
+echo "1. Stopping router VMs..."
+for vm in router-vm router-vm-virtio router-vm-passthrough; do
+    if sudo virsh list | grep -q "$vm"; then
+        sudo virsh destroy "$vm" 2>/dev/null || true
+        echo "   Stopped $vm"
+    fi
+done
 
-echo "2. Releasing network device from passthrough..."
-EOF
+echo "2. Unloading VFIO modules..."
+for mod in vfio_pci vfio_iommu_type1 vfio; do
+    if lsmod | grep -q "^$mod"; then
+        sudo modprobe -r "$mod" 2>/dev/null || true
+        echo "   Unloaded $mod"
+    fi
+done
+
+echo "3. Loading WiFi driver..."
+RECOVERY_SCRIPT
 
 cat >> "$CONFIG_DIR/emergency-recovery.sh" << EOF
-if [[ -w "/sys/bus/pci/drivers/vfio-pci/unbind" ]]; then
-    echo "$PRIMARY_PCI" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
-    echo "   ✓ Device unbound from VFIO"
+sudo modprobe $PRIMARY_DRIVER 2>/dev/null || true
+echo "   Loaded $PRIMARY_DRIVER"
+
+echo "4. Rebinding device..."
+if [[ -e "/sys/bus/pci/devices/$PRIMARY_PCI/driver/unbind" ]]; then
+    echo "$PRIMARY_PCI" | sudo tee "/sys/bus/pci/devices/$PRIMARY_PCI/driver/unbind" >/dev/null 2>&1 || true
 fi
+echo "$PRIMARY_PCI" | sudo tee /sys/bus/pci/drivers_probe >/dev/null 2>&1 || true
 
-# Remove device ID from VFIO
-if [[ -w "/sys/bus/pci/drivers/vfio-pci/remove_id" ]]; then
-    echo "$PRIMARY_ID" > /sys/bus/pci/drivers/vfio-pci/remove_id 2>/dev/null || true
-    echo "   ✓ Device ID removed from VFIO"
-fi
+echo "5. Restarting NetworkManager..."
+sudo systemctl restart NetworkManager
 
-# Rebind to original driver
-echo "3. Restoring network driver..."
-modprobe $PRIMARY_DRIVER 2>/dev/null || true
-echo "$PRIMARY_PCI" > /sys/bus/pci/drivers_probe 2>/dev/null || true
-
-# Start NetworkManager
-echo "4. Starting network services..."
-systemctl start NetworkManager
-
-# Wait a moment for connection
-echo "5. Testing connectivity..."
-sleep 5
-
-if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
-    echo "   ✓ Internet connectivity restored!"
-else
-    echo "   ⚠ No connectivity yet. Try: systemctl restart NetworkManager"
-fi
+echo "6. Waiting for network..."
+for i in {1..10}; do
+    if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        echo
+        echo "✓ Network connectivity restored!"
+        exit 0
+    fi
+    echo -n "."
+    sleep 1
+done
 
 echo
-echo "Emergency recovery completed."
-echo "Your host should now have network access."
+echo "⚠ Network not immediately available"
+echo "Try: sudo systemctl restart NetworkManager"
+echo "Or wait a moment and check: ip link"
 EOF
 
 chmod +x "$CONFIG_DIR/emergency-recovery.sh"
@@ -528,55 +479,53 @@ Generated on $(date) for hardware:
 
 ## Production Deployment (Point of No Return)
 
-1. **Apply host passthrough configuration:**
+1. **Apply host configuration:**
    \`\`\`bash
-   # Add to your NixOS configuration
-   sudo cp host-passthrough.nix /etc/nixos/
-   # Import in configuration.nix and rebuild
-   sudo nixos-rebuild boot && sudo reboot
+   sudo nixos-rebuild switch --flake /path/to/flake#hostname
+   sudo reboot
    \`\`\`
 
-2. **Deploy router VM with passthrough:**
+2. **Deploy router VM:**
    \`\`\`bash
    sudo virsh define router-vm-passthrough.xml
    sudo virsh start router-vm
    \`\`\`
 
-## Files Generated
-
-- \`host-passthrough.nix\` - Host VFIO passthrough config
-- \`router-vm-passthrough.xml\` - Production VM with WiFi passthrough
-- \`router-vm-virtio.xml\` - Safe testing VM with virtio networking
-- \`router-vm-config.nix\` - NixOS configuration for router VM
-- \`emergency-recovery.sh\` - Network recovery script
+3. **Verify connectivity:**
+   - Host should get DHCP from 192.168.100.0/24
+   - Router VM manages internet via WiFi passthrough
+   - Emergency recovery available if needed
 
 ## Emergency Recovery
 
-If network is lost: \`sudo ./emergency-recovery.sh\`
+If network is lost:
+\`\`\`bash
+sudo ./emergency-recovery.sh
+\`\`\`
 
-This restores host networking by stopping the router VM and rebinding the WiFi card to the original driver.
+This will:
+- Stop all VMs
+- Unbind WiFi from VFIO
+- Restore normal driver
+- Restart networking
 EOF
 
-echo "   ✓ Instructions: $CONFIG_DIR/README.md"
+echo "   ✓ Deployment guide: $CONFIG_DIR/README.md"
 
 echo
-echo "=== Setup Generation Complete ==="
+echo "=== Configuration Generation Complete ==="
 echo
-echo "Generated files in: $CONFIG_DIR/"
-echo "  - host-passthrough.nix          (Host NixOS config)"
-echo "  - router-vm-passthrough.xml     (Production VM definition)"  
-echo "  - router-vm-virtio.xml          (Safe testing VM definition)"
-echo "  - router-vm-config.nix          (Router VM NixOS config)"
-echo "  - emergency-recovery.sh         (Network recovery)"
-echo "  - README.md                     (Usage instructions)"
+echo "Generated files in $CONFIG_DIR/:"
+echo "  - host-passthrough.nix    : Host VFIO configuration"
+echo "  - router-vm-config.nix    : Router VM NixOS configuration"
+echo "  - router-vm-passthrough.xml : Production VM (with passthrough)"
+echo "  - router-vm-virtio.xml    : Test VM (safe networking)"
+echo "  - emergency-recovery.sh   : Network recovery script"
+echo "  - README.md              : Deployment instructions"
 echo
-echo "Hardware-specific details:"
-echo "  - PCI Address: $PRIMARY_PCI (parsed as bus=$pci_bus_hex slot=$pci_slot_hex func=$pci_func_hex)"
-echo "  - OVMF Detection: $USE_FIRMWARE_AUTO (auto-detection for maximum compatibility)"
+echo "Router VM config also copied to: modules/router-vm-config.nix"
 echo
 echo "Next steps:"
-echo "1. Test with virtio networking: sudo virsh define $CONFIG_DIR/router-vm-virtio.xml"
-echo "2. Test emergency recovery: sudo $CONFIG_DIR/emergency-recovery.sh"  
-echo "3. If tests pass, proceed to passthrough deployment"
-echo
-echo "⚠ IMPORTANT: Always test emergency recovery before deploying passthrough!"
+echo "  1. Test with: nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure"
+echo "  2. Run VM: ./result/bin/run-router-vm-vm"
+echo "  3. For passthrough: ./scripts/deploy-router.sh passthrough"

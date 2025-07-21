@@ -1,29 +1,31 @@
-#!/run/current-system/sw/bin/bash
-# Simple router VM testing script
-
+#!/usr/bin/env bash
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+readonly DOTFILES_DIR="${HOME}/dotfiles"
 
-case "${1:-}" in
-    "start"|"")
-        echo "Starting router VM for testing..."
-        echo "Login: admin / admin"
-        echo "Exit: type 'exit', then Ctrl+A, C, then 'quit'"
-        echo
-        cd "$PROJECT_ROOT"
-        QEMU_OPTS="-nographic -serial mon:stdio" ./result/bin/run-router-vm-vm
-        ;;
-    "build")
-        echo "Building router VM..."
-        cd "$PROJECT_ROOT"
-        nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure
-        echo "✓ Router VM built. Start with: $0"
-        ;;
-    *)
-        echo "Usage: $0 [start|build]"
-        echo "  start (default) - Start and connect to router VM"
-        echo "  build          - Build the router VM"
-        ;;
-esac
+log() { echo "[$(date '+%H:%M:%S')] $*"; }
+error() { echo "[ERROR] $*" >&2; exit 1; }
+
+if [[ ! -d "$DOTFILES_DIR" ]]; then
+    error "Dotfiles directory not found"
+fi
+
+cd "$DOTFILES_DIR"
+
+if [[ ! -L "./result" ]] || [[ ! -x "./result/bin/run-router-vm-vm" ]]; then
+    log "Building router VM first..."
+    if ! nix build .#nixosConfigurations.zephyrus.config.system.build.vm --impure; then
+        error "Failed to build router VM"
+    fi
+fi
+
+log "Starting router VM..."
+log "Login: admin / admin"
+log "Exit: Ctrl+A, X"
+echo
+
+export QEMU_NET_OPTS="netdev=user,id=n1,hostfwd=tcp::2222-:22"
+export QEMU_OPTS="-m 2048 -nographic"
+
+./result/bin/run-router-vm-vm

@@ -8,40 +8,39 @@ readonly DOTFILES_DIR="${HOME}/dotfiles"
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 error() { echo "[ERROR] $*" >&2; exit 1; }
 
-[[ -d "$DOTFILES_DIR" ]] || error "Dotfiles not found at $DOTFILES_DIR"
-[[ -f "$SPLIX_DIR/hardware-results.env" ]] || error "Run hardware detection first"
-[[ -d "$SPLIX_DIR/scripts/generated-configs" ]] || error "Run config generation first"
+if [[ ! -d "$SPLIX_DIR/scripts/generated-configs" ]]; then
+    error "Generated configs not found. Run vm-setup-generator.sh first."
+fi
 
+if [[ ! -d "$DOTFILES_DIR" ]]; then
+    error "Dotfiles directory not found at $DOTFILES_DIR"
+fi
+
+log "Creating router-generated module directory..."
 mkdir -p "$DOTFILES_DIR/modules/router-generated"
 
+log "Copying generated configs..."
+cp "$SPLIX_DIR/scripts/generated-configs/host-passthrough.nix" "$DOTFILES_DIR/modules/router-generated/"
 cp "$SPLIX_DIR/modules/router-vm-config.nix" "$DOTFILES_DIR/modules/router-generated/vm.nix"
-cp "$SPLIX_DIR/scripts/generated-configs/host-passthrough.nix" "$DOTFILES_DIR/modules/router-generated/host.nix"
 
-if ! grep -q "router-host.*=" "$DOTFILES_DIR/flake.nix"; then
+if [[ ! -f "$DOTFILES_DIR/flake.nix.backup" ]]; then
+    log "Creating flake.nix backup..."
     cp "$DOTFILES_DIR/flake.nix" "$DOTFILES_DIR/flake.nix.backup"
+fi
+
+log "Checking if router module already integrated..."
+if grep -q "router-generated" "$DOTFILES_DIR/flake.nix"; then
+    log "Router module already integrated in flake.nix"
+else
+    log "Adding router module to zephyrus configuration..."
     
     awk '
-    /nixosConfigurations = {/ { in_configs = 1 }
-    in_configs && /^[[:space:]]*};[[:space:]]*$/ && !added {
-        print "        router-host = nixpkgs.lib.nixosSystem {"
-        print "          system = \"x86_64-linux\";"
-        print "          modules = ["
-        print "            { nixpkgs.config.allowUnfree = true; }"
-        print "            { nixpkgs.overlays = [ overlay-unstable ]; }"
-        print "            /etc/nixos/hardware-configuration.nix"
-        print "            ./modules/router-generated/host.nix"
-        print "          ];"
-        print "        };"
-        print "        router-vm = nixpkgs.lib.nixosSystem {"
-        print "          system = \"x86_64-linux\";"
-        print "          modules = ["
-        print "            { nixpkgs.config.allowUnfree = true; }"
-        print "            { nixpkgs.overlays = [ overlay-unstable ]; }"
-        print "            ./modules/router-generated/vm.nix"
-        print "            { fileSystems.\"/\".device = \"/dev/vda\"; fileSystems.\"/\".fsType = \"ext4\"; boot.loader.grub.device = \"/dev/vda\"; system.stateVersion = \"25.05\"; }"
-        print "          ];"
-        print "        };"
-        added = 1
+    /zephyrus = nixpkgs\.lib\.nixosSystem/ { in_zephyrus = 1 }
+    in_zephyrus && /modules = \[/ { in_modules = 1 }
+    in_modules && /\];/ {
+        print "            ./modules/router-generated/host-passthrough.nix"
+        in_modules = 0
+        in_zephyrus = 0
     }
     { print }
     ' "$DOTFILES_DIR/flake.nix" > "$DOTFILES_DIR/flake.nix.tmp"
@@ -49,8 +48,6 @@ if ! grep -q "router-host.*=" "$DOTFILES_DIR/flake.nix"; then
     mv "$DOTFILES_DIR/flake.nix.tmp" "$DOTFILES_DIR/flake.nix"
 fi
 
-cd "$DOTFILES_DIR"
-git add modules/router-generated/
-git add flake.nix
-
-log "Integration complete - router configs staged in git"
+log "Integration complete"
+log "Router configs added to: $DOTFILES_DIR/modules/router-generated/"
+log "Original flake.nix backed up to: flake.nix.backup"
