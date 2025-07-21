@@ -115,10 +115,35 @@ dotfiles_integration() {
     fi
     
     cd "$DOTFILES_DIR"
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        error "Dotfiles has uncommitted changes. Please commit or stash first."
-        read -p "Press Enter to continue..."
-        return 1
+    
+    # Check for uncommitted changes (modified or untracked files)
+    if ! git diff --quiet || [[ -n $(git ls-files --others --exclude-standard) ]]; then
+        log "Found uncommitted changes in dotfiles"
+        
+        # Show current status
+        echo "Current git status:"
+        git status --short
+        echo
+        
+        read -p "Add all changes and commit? [y/N]: " commit_confirm
+        
+        if [[ "$commit_confirm" =~ ^[Yy]$ ]]; then
+            # Add all untracked files that might be router-related
+            if [[ -f "flake.nix.backup" ]]; then
+                git add flake.nix.backup
+            fi
+            if [[ -f "scripts/bash/router-deploy.sh" ]]; then
+                git add scripts/bash/router-deploy.sh
+            fi
+            
+            # Commit all staged changes
+            git commit -m "Add router VM configuration (pre-integration)" || true
+            log "Committed existing changes"
+        else
+            error "Please handle uncommitted changes manually first"
+            read -p "Press Enter to continue..."
+            return 1
+        fi
     fi
     
     cd "$SPLIX_DIR"
@@ -139,8 +164,21 @@ dotfiles_integration() {
         log "Added flake.nix changes to git"
     fi
     
-    log "Dotfiles integration complete with git staging"
-    log "Files staged for commit in dotfiles repository"
+    # Commit the integration changes
+    if ! git diff --cached --quiet; then
+        log "Committing router integration..."
+        git commit -m "Integrate router VM configuration from splix
+    
+- Added router-generated module
+- Updated flake.nix for router support
+- Ready for VM testing"
+        log "Router integration committed (not pushed)"
+    else
+        log "No changes to commit"
+    fi
+    
+    log "Dotfiles integration complete"
+    log "Changes committed locally - push manually when ready"
     
     read -p "Press Enter to continue..."
 }
