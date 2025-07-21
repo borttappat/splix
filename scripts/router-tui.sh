@@ -65,10 +65,10 @@ hardware_detection() {
     
     if [[ -f "hardware-results.env" ]]; then
         source hardware-results.env
-        log "Hardware detection complete. Compatibility: ${HARDWARE_SCORE:-0}/10"
+        log "Hardware detection complete. Compatibility: ${COMPATIBILITY_SCORE:-0}/10"
         
-        if [[ "${HARDWARE_SCORE:-0}" -lt 6 ]]; then
-            error "Hardware compatibility too low (${HARDWARE_SCORE}/10). Cannot proceed safely."
+        if [[ "${COMPATIBILITY_SCORE:-0}" -lt 6 ]]; then
+            error "Hardware compatibility too low (${COMPATIBILITY_SCORE}/10). Cannot proceed safely."
             return 1
         fi
     else
@@ -242,7 +242,7 @@ show_status() {
     echo "=== Hardware Detection ==="
     if [[ -f "$SPLIX_DIR/hardware-results.env" ]]; then
         source "$SPLIX_DIR/hardware-results.env"
-        echo "Compatibility Score: ${HARDWARE_SCORE:-Unknown}/10"
+        echo "Compatibility Score: ${COMPATIBILITY_SCORE:-Unknown}/10"
         echo "WiFi Interface: ${BEST_INTERFACE:-Unknown}"
         echo "PCI Device: ${DEVICE_ID:-Unknown}"
     else
