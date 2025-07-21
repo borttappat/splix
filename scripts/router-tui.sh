@@ -191,10 +191,10 @@ vm_testing() {
         return 1
     fi
     
-    cd "$DOTFILES_DIR"
+    cd "$SPLIX_DIR"
     
     log "Building router VM..."
-    if ! nix build .#nixosConfigurations.zephyrus.config.system.build.vm --impure; then
+    if ! nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure; then
         error "VM build failed. Check flake.nix integration."
         return 1
     fi
