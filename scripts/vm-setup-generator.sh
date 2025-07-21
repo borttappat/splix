@@ -276,17 +276,19 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
 {
   imports = [ ];
 
-  # Basic system configuration
-  boot.loader.grub.enable = true;
-  boot.loader.grub.device = "/dev/vda";
-  boot.loader.timeout = 1;
+  # Essential boot configuration for VM
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/vda";
+    timeout = 1;
+  };
+  
+  boot.initrd.availableKernelModules = [ "ahci" "xhci_pci" "virtio_pci" "sr_mod" "virtio_blk" ];
+  boot.kernelModules = [ "kvm-intel" "af_packet" ];
 
-  # Kernel modules for networking
-  boot.kernelModules = [ "af_packet" ];
-
-  # File systems
+  # File systems - use label for flexibility
   fileSystems."/" = {
-    device = "/dev/vda1";
+    device = "/dev/disk/by-label/nixos";
     fsType = "ext4";
     autoResize = true;
   };
@@ -296,17 +298,14 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
     hostName = "router-vm";
     useDHCP = false;
     
-    # WAN interface (gets internet from host via passthrough WiFi)
-    interfaces.wlan0 = {
+    # Test interface for QEMU user networking
+    interfaces.eth0 = {
       useDHCP = true;
     };
     
-    # LAN interface (provides internet to host)
-    interfaces.eth0 = {
-      ipv4.addresses = [{
-        address = "192.168.100.2";
-        prefixLength = 24;
-      }];
+    # WAN interface (for when WiFi is passed through)
+    interfaces.wlan0 = {
+      useDHCP = lib.mkDefault true;
     };
 
     # Enable forwarding and NAT
@@ -371,6 +370,22 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
       options = [ "NOPASSWD" ];
     }];
   }];
+  
+  # Enable getty autologin for testing
+  services.getty.autologinUser = "admin";
+  
+  # VM specific configuration for testing
+  virtualisation.vmVariant = {
+    virtualisation = {
+      memorySize = 2048;
+      cores = 2;
+      graphics = false;
+      qemu.options = [
+        "-nographic"
+        "-serial mon:stdio"
+      ];
+    };
+  };
 
   system.stateVersion = "24.05";
 }
