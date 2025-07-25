@@ -215,9 +215,8 @@ deploy_host_config() {
     echo "================================================================"
     echo "                 !!!  POINT OF NO RETURN  !!!"
     echo "================================================================"
-    echo
     echo "This will:"
-    echo "  - Apply VFIO passthrough configuration"
+    echo "  - Build your zephyrus config with VFIO passthrough"
     echo "  - Bind WiFi card to VFIO driver"
     echo "  - REQUIRE REBOOT to take effect"
     echo "  - Host will lose WiFi until router VM starts"
@@ -227,34 +226,40 @@ deploy_host_config() {
     echo "  ✓ Tested emergency recovery"
     echo "  ✓ Backup network access method"
     echo
-    read -p "Are you SURE you want to proceed? Type 'yes' to continue: " confirm
+    read -p "Are you SURE you want to proceed? Type "yes" to continue: " confirm
     
     if [[ "$confirm" != "yes" ]]; then
         log "Deployment cancelled"
-        return 0
-    fi
-    
-    log "Creating system restore point..."
-    sudo nix-env -p /nix/var/nix/profiles/system --list-generations | tail -1 > "$SPLIX_DIR/.last-known-good"
-    
-    cd "$DOTFILES_DIR"
-    log "Building and applying host configuration..."
-    
-    if ! sudo nixos-rebuild switch --flake .#zephyrus; then
-        error "Host configuration failed to apply"
+        read -p "Press Enter to continue..."
         return 1
     fi
     
-    log "Host configuration applied successfully"
-    log "REBOOT REQUIRED to activate VFIO passthrough"
-    echo
-    read -p "Reboot now? [y/N]: " reboot_confirm
-    
-    if [[ "$reboot_confirm" =~ ^[Yy]$ ]]; then
-        sudo reboot
-    else
-        log "Reboot when ready. After reboot, use option 6 to start router VM."
+    log "Checking dotfiles integration..."
+    if [[ ! -f "$DOTFILES_DIR/modules/router-generated/host-passthrough.nix" ]]; then
+        error "Router module not found in dotfiles. Run option 3 first."
+        read -p "Press Enter to continue..."
+        return 1
     fi
+    
+    log "Committing changes in dotfiles..."
+    cd "$DOTFILES_DIR"
+    git add modules/router-generated/host-passthrough.nix flake.nix
+    git commit -m "Apply router VFIO passthrough configuration" || true
+    
+    echo
+    echo "================================================================"
+    echo "                    MANUAL DEPLOYMENT STEP"
+    echo "================================================================"
+    echo "Run the following commands to deploy:"
+    echo
+    echo "cd ~/dotfiles"
+    echo "./scripts/bash/nixbuild.sh"
+    echo
+    echo "After the build completes successfully, reboot your system."
+    echo "Then return to this TUI and use Option 6 to start the router VM."
+    echo "================================================================"
+    
+    read -p "Press Enter when you have completed the deployment..."
 }
 
 start_router_vm() {
