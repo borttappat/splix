@@ -75,7 +75,7 @@ cat > "$CONFIG_DIR/host-passthrough.nix" << EOF
   virtualisation.libvirtd = {
     enable = true;
     qemu = {
-      package = pkgs.qemu_kvm;
+      package = lib.mkForce pkgs.qemu_kvm;
       runAsRoot = true;
       swtpm.enable = true;
       ovmf = {
