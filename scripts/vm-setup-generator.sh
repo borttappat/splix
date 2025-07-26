@@ -136,6 +136,9 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
+    <kernel>/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/kernel</kernel>
+    <initrd>/nix/store/xyh03i0m0vzb7wnnqq7cq4x7whq0327z-initrd-linux-6.12.39/initrd</initrd>
+    <cmdline>console=tty0 console=ttyS0,115200n8 init=/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/init</cmdline>
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -212,6 +215,9 @@ cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
+    <kernel>/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/kernel</kernel>
+    <initrd>/nix/store/xyh03i0m0vzb7wnnqq7cq4x7whq0327z-initrd-linux-6.12.39/initrd</initrd>
+    <cmdline>console=tty0 console=ttyS0,115200n8 init=/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/init</cmdline>
     <bootmenu enable='yes'/>
   </os>
   <features>
