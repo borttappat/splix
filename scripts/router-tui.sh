@@ -96,20 +96,6 @@ config_generation() {
     ./scripts/vm-setup-generator.sh
     
     log "Configuration generation complete"
-
-    # Validate generated XML has correct disk path
-    expected_path="$SPLIX_DIR/router-vm.qcow2"
-    if grep -q "source file="$expected_path"" "$SPLIX_DIR/scripts/generated-configs/router-vm-passthrough.xml"; then
-        log "✓ Generated XML has correct disk path: $expected_path"
-    else
-        log "⚠ Warning: Generated XML may have incorrect disk path"
-        grep "source file" "$SPLIX_DIR/scripts/generated-configs/router-vm-passthrough.xml"
-    fi
-        log "✓ Generated XML has correct disk path: $expected_path"
-    else
-        log "⚠ Warning: Generated XML may have incorrect disk path"
-        grep "source file" "$CONFIG_DIR/router-vm-passthrough.xml"
-    fi
     log "Generated configs available in scripts/generated-configs/"
     
     read -p "Press Enter to continue..."
