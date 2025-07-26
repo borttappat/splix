@@ -44,6 +44,19 @@ echo "  Device ID: $PRIMARY_ID"
 echo "  Driver: $PRIMARY_DRIVER"
 echo "  Compatibility: $COMPATIBILITY_SCORE/10"
 
+echo "Building router VM to extract boot parameters..."
+if ! nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure; then
+    echo "   ✗ VM build failed"
+    exit 1
+fi
+echo "   ✓ VM built successfully"
+
+# Extract paths from the built VM
+KERNEL_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
+INITRD_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
+SYSTEM_PATH=$(echo "$KERNEL_PATH" | sed "s|/kernel||")
+echo "   ✓ Extracted boot paths: kernel=$KERNEL_PATH"
+
 # Detect OVMF firmware paths
 echo "Detecting OVMF firmware paths..."
 detect_ovmf_paths
@@ -136,9 +149,9 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-    <kernel>/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/kernel</kernel>
-    <initrd>/nix/store/xyh03i0m0vzb7wnnqq7cq4x7whq0327z-initrd-linux-6.12.39/initrd</initrd>
-    <cmdline>console=tty0 console=ttyS0,115200n8 init=/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/init</cmdline>
+    <kernel>$KERNEL_PATH</kernel>
+    <initrd>$INITRD_PATH</initrd>
+    <cmdline>console=tty0 console=ttyS0,115200n8 init=$SYSTEM_PATH/init</cmdline>
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -198,6 +211,10 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
       <target dir="nix-store"/>
       <driver type="path" wrpolicy="immediate"/>
     </filesystem>
+    <filesystem type="mount" accessmode="passthrough">
+      <source dir="/tmp/shared"/>
+      <target dir="shared"/>
+    </filesystem>
   </devices>
 </domain>
 EOF
@@ -215,9 +232,9 @@ cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-    <kernel>/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/kernel</kernel>
-    <initrd>/nix/store/xyh03i0m0vzb7wnnqq7cq4x7whq0327z-initrd-linux-6.12.39/initrd</initrd>
-    <cmdline>console=tty0 console=ttyS0,115200n8 init=/nix/store/7hjdmdap38a4n6pp7jwda88xwlxxpkj5-nixos-system-router-vm-25.05.20250724.3ff0e34/init</cmdline>
+    <kernel>$KERNEL_PATH</kernel>
+    <initrd>$INITRD_PATH</initrd>
+    <cmdline>console=tty0 console=ttyS0,115200n8 init=$SYSTEM_PATH/init</cmdline>
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -277,6 +294,10 @@ cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
       <target dir="nix-store"/>
       <driver type="path" wrpolicy="immediate"/>
     </filesystem>
+    <filesystem type="mount" accessmode="passthrough">
+      <source dir="/tmp/shared"/>
+      <target dir="shared"/>
+    </filesystem>
   </devices>
 </domain>
 EOF
@@ -284,6 +305,18 @@ EOF
 echo "   ✓ VM virtio test configuration: $CONFIG_DIR/router-vm-virtio.xml"
 
 # 4. Generate router VM NixOS configuration
+echo "3.5 Building router VM to extract boot parameters..."
+if ! nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure; then
+    echo "   ✗ VM build failed"
+    exit 1
+fi
+echo "   ✓ VM built successfully"
+
+# Extract paths from the built VM
+KERNEL_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
+INITRD_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
+SYSTEM_PATH=$(echo "$KERNEL_PATH" | sed "s|/kernel||")
+echo "   ✓ Extracted boot paths: kernel=$KERNEL_PATH"
 echo "4. Generating router VM NixOS configuration..."
 
 cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
@@ -544,19 +577,3 @@ EOF
 echo "   ✓ Deployment guide: $CONFIG_DIR/README.md"
 
 echo
-echo "=== Configuration Generation Complete ==="
-echo
-echo "Generated files in $CONFIG_DIR/:"
-echo "  - host-passthrough.nix    : Host VFIO configuration"
-echo "  - router-vm-config.nix    : Router VM NixOS configuration"
-echo "  - router-vm-passthrough.xml : Production VM (with passthrough)"
-echo "  - router-vm-virtio.xml    : Test VM (safe networking)"
-echo "  - emergency-recovery.sh   : Network recovery script"
-echo "  - README.md              : Deployment instructions"
-echo
-echo "Router VM config also copied to: modules/router-vm-config.nix"
-echo
-echo "Next steps:"
-echo "  1. Test with: nix build .#nixosConfigurations.router-vm.config.system.build.vm --impure"
-echo "  2. Run VM: ./result/bin/run-router-vm-vm"
-echo "  3. For passthrough: ./scripts/deploy-router.sh passthrough"
