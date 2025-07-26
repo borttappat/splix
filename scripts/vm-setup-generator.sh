@@ -159,7 +159,7 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
     <!-- Virtual disk -->
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'/>
-      <source file='/var/lib/libvirt/images/router-vm.qcow2'/>
+      <source file='${CONFIG_DIR%/*}/router-vm.qcow2'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>
     </disk>
@@ -230,7 +230,7 @@ cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
     <!-- Virtual disk -->
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'/>
-      <source file='/var/lib/libvirt/images/router-vm.qcow2'/>
+      <source file='${CONFIG_DIR%/*}/router-vm.qcow2'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>
     </disk>

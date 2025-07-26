@@ -96,6 +96,15 @@ config_generation() {
     ./scripts/vm-setup-generator.sh
     
     log "Configuration generation complete"
+
+    # Validate generated XML has correct disk path
+    expected_path="$SPLIX_DIR/router-vm.qcow2"
+    if grep -q "source file="$expected_path"" "$CONFIG_DIR/router-vm-passthrough.xml"; then
+        log "✓ Generated XML has correct disk path: $expected_path"
+    else
+        log "⚠ Warning: Generated XML may have incorrect disk path"
+        grep "source file" "$CONFIG_DIR/router-vm-passthrough.xml"
+    fi
     log "Generated configs available in scripts/generated-configs/"
     
     read -p "Press Enter to continue..."
@@ -265,13 +274,52 @@ deploy_host_config() {
 start_router_vm() {
     log "Starting router VM with WiFi passthrough..."
     
-    if [[ ! -f "$SCRIPT_DIR/deploy-router.sh" ]]; then
-        error "deploy-router.sh not found"
+    # Verify VFIO passthrough is active
+    log "Checking VFIO status..."
+    if ! lspci -nnk | grep -A3 "Network controller" | grep -q "vfio-pci"; then
+        error "VFIO passthrough not active. WiFi card not bound to vfio-pci."
+        echo "Expected: WiFi card should use vfio-pci driver after reboot"
+        echo "Current status:"
+        lspci -nnk | grep -A3 "Network controller"
+        read -p "Press Enter to continue..."
         return 1
     fi
     
-    cd "$SPLIX_DIR"
-    sudo ./scripts/deploy-router.sh deploy
+    log "✓ VFIO passthrough is active"
+    
+    # Verify generated configs exist
+    if [[ ! -f "$SPLIX_DIR/scripts/generated-configs/router-vm-passthrough.xml" ]]; then
+        error "Passthrough VM config not found. Run config generation first."
+        return 1
+    fi
+    
+    # Ensure VM disk file has correct permissions
+    log "Setting VM disk permissions..."
+    sudo chmod 644 "$SPLIX_DIR/router-vm.qcow2"
+    
+    # Clean up any existing VM definition and redefine with latest XML
+    log "Updating VM definition with latest configuration..."
+    sudo virsh destroy router-vm 2>/dev/null || true
+    sudo virsh undefine router-vm 2>/dev/null || true
+    
+    log "Defining router VM with WiFi passthrough..."
+    sudo virsh define "$SPLIX_DIR/scripts/generated-configs/router-vm-passthrough.xml"
+    
+    log "Starting router VM..."
+    sudo virsh start router-vm
+    
+    if sudo virsh domstate router-vm | grep -q "running"; then
+        log "✓ Router VM started successfully"
+        echo "The router VM should now:"
+        echo "  1. Boot with your WiFi card passed through"
+        echo "  2. Connect to WiFi and provide internet to host"
+        echo "  3. Restore host internet connectivity"
+        echo
+        echo "Use Option 8 to connect to router console."
+        echo "Use 'virt-viewer --connect qemu:///system router-vm' for graphical access."
+    else
+        error "VM failed to start. Check 'sudo virsh start router-vm' for details."
+    fi
     
     read -p "Press Enter to continue..."
 }
