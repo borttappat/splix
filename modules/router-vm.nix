@@ -1,80 +1,125 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, modulesPath, ... }:
 
 {
   imports = [
-    <nixpkgs/nixos/modules/profiles/qemu-guest.nix>
+    "${toString modulesPath}/profiles/qemu-guest.nix"
+    "${toString modulesPath}/profiles/minimal.nix"
   ];
 
-  boot.loader.grub.enable = true;
+  boot.initrd.availableKernelModules = [ 
+    "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "virtio_balloon"
+    "9p" "9pnet_virtio"
+  ];
+  
+  boot.kernelModules = [ "virtio_balloon" "virtio_console" ];
   boot.loader.grub.device = "/dev/vda";
-  
-  networking.hostName = "router-vm";
-  networking.networkmanager.enable = true;
-  networking.firewall.enable = true;
-  networking.firewall.allowedTCPPorts = [ 22 53 80 443 ];
-  networking.firewall.allowedUDPPorts = [ 53 67 68 ];
-  
-  boot.kernel.sysctl = {
-    "net.ipv4.conf.all.forwarding" = true;
-    "net.ipv6.conf.all.forwarding" = true;
+  boot.loader.timeout = 1;
+
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+    autoResize = true;
   };
-  
-  networking.nat = {
+
+  systemd.network.enable = true;
+  networking.networkmanager.enable = false;
+  networking.useDHCP = false;
+
+  systemd.network = {
     enable = true;
-    externalInterface = "wlan0";
-    internalInterfaces = [ "enp1s0" ];
+    
+    networks."10-eth0" = {
+      matchConfig.Name = "eth0";
+      networkConfig.DHCP = "yes";
+      networkConfig.IPv6AcceptRA = true;
+    };
+
+    networks."20-wlan0" = {
+      matchConfig.Name = "wlan0";
+      networkConfig.DHCP = "yes";
+      bridge = [ "br0" ];
+    };
+
+    netdevs."br0" = {
+      netdevConfig = {
+        Name = "br0";
+        Kind = "bridge";
+      };
+    };
+
+    networks."30-br0" = {
+      matchConfig.Name = "br0";
+      networkConfig = {
+        DHCP = "no";
+        IPForward = "yes";
+        IPv6AcceptRA = false;
+      };
+      addresses = [
+        {
+          addressConfig.Address = "192.168.100.1/24";
+        }
+      ];
+    };
   };
-  
+
+  services.hostapd = {
+    enable = true;
+    radios.wlan0 = {
+      band = "2g";
+      channel = 6;
+      networks.wlan0 = {
+        ssid = "RouterVM";
+        authentication = {
+          mode = "wpa2-sha256";
+          wpaPassword = "changeme123";
+        };
+        bssid = "02:00:00:00:00:00";
+      };
+    };
+  };
+
   services.dnsmasq = {
     enable = true;
     settings = {
-      interface = "enp1s0";
-      listen-address = "192.168.100.1";
-      bind-interfaces = true;
-      dhcp-range = "192.168.100.10,192.168.100.100,24h";
-      dhcp-option = [
-        "option:router,192.168.100.1"
-        "option:dns-server,192.168.100.1"
-      ];
-      server = [ "8.8.8.8" "1.1.1.1" ];
-      log-queries = true;
-      log-dhcp = true;
+      interface = "br0";
+      dhcp-range = [ "192.168.100.100,192.168.100.200,12h" ];
+      dhcp-option = [ "option:router,192.168.100.1" ];
+      server = [ "1.1.1.1" "8.8.8.8" ];
     };
   };
-  
+
+  networking.firewall = {
+    enable = true;
+    allowedTCPPorts = [ 22 53 ];
+    allowedUDPPorts = [ 53 67 68 ];
+    trustedInterfaces = [ "br0" ];
+  };
+
+  networking.nat = {
+    enable = true;
+    externalInterface = "eth0";
+    internalInterfaces = [ "br0" ];
+  };
+
+  users.users.admin = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" ];
+    password = "admin";
+  };
+
   services.openssh = {
     enable = true;
-    settings = {
-      PasswordAuthentication = false;
-      KbdInteractiveAuthentication = false;
-      PermitRootLogin = "yes";
-    };
+    settings.PermitRootLogin = "yes";
   };
-  
+
   environment.systemPackages = with pkgs; [
+    htop
+    iw
+    wireless-tools
     tcpdump
-    wireshark-cli
     iptables
     bridge-utils
-    iproute2
-    bind.dnsutils
-    curl
-    wget
-    htop
-    iftop
   ];
-  
-  systemd.network.networks."10-wan" = {
-    matchConfig.Name = "wlan0";
-    networkConfig.DHCP = "yes";
-    networkConfig.Priority = 10;
-  };
-  
-  systemd.network.networks."20-lan" = {
-    matchConfig.Name = "enp1s0";
-    networkConfig.Address = "192.168.100.1/24";
-    networkConfig.IPForward = "yes";
-  };
-  
-  system.stateVersion = "24.05";
+
+  system.stateVersion = "24.11";
 }
