@@ -13,7 +13,6 @@
   
   boot.kernelModules = [ "virtio_balloon" "virtio_console" ];
   boot.loader.grub.device = "/dev/vda";
-  boot.loader.timeout = 1;
 
   fileSystems."/" = {
     device = "/dev/disk/by-label/nixos";
@@ -21,44 +20,28 @@
     autoResize = true;
   };
 
-  systemd.network.enable = true;
-  networking.networkmanager.enable = false;
-  networking.useDHCP = false;
-
-  systemd.network = {
-    enable = true;
-    
-    networks."10-eth0" = {
-      matchConfig.Name = "eth0";
-      networkConfig.DHCP = "yes";
-      networkConfig.IPv6AcceptRA = true;
-    };
-
-    networks."20-wlan0" = {
-      matchConfig.Name = "wlan0";
-      networkConfig.DHCP = "yes";
-      bridge = [ "br0" ];
-    };
-
-    netdevs."br0" = {
-      netdevConfig = {
-        Name = "br0";
-        Kind = "bridge";
+  networking = {
+    useDHCP = false;
+    bridges.br0.interfaces = [];
+    interfaces = {
+      eth0.useDHCP = true;
+      br0 = {
+        ipv4.addresses = [{
+          address = "192.168.100.1";
+          prefixLength = 24;
+        }];
       };
     };
-
-    networks."30-br0" = {
-      matchConfig.Name = "br0";
-      networkConfig = {
-        DHCP = "no";
-        IPForward = "yes";
-        IPv6AcceptRA = false;
-      };
-      addresses = [
-        {
-          addressConfig.Address = "192.168.100.1/24";
-        }
-      ];
+    firewall = {
+      enable = true;
+      allowedTCPPorts = [ 22 53 ];
+      allowedUDPPorts = [ 53 67 68 ];
+      trustedInterfaces = [ "br0" ];
+    };
+    nat = {
+      enable = true;
+      externalInterface = "eth0";
+      internalInterfaces = [ "br0" ];
     };
   };
 
@@ -73,7 +56,6 @@
           mode = "wpa2-sha256";
           wpaPassword = "changeme123";
         };
-        bssid = "02:00:00:00:00:00";
       };
     };
   };
@@ -86,19 +68,6 @@
       dhcp-option = [ "option:router,192.168.100.1" ];
       server = [ "1.1.1.1" "8.8.8.8" ];
     };
-  };
-
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [ 22 53 ];
-    allowedUDPPorts = [ 53 67 68 ];
-    trustedInterfaces = [ "br0" ];
-  };
-
-  networking.nat = {
-    enable = true;
-    externalInterface = "eth0";
-    internalInterfaces = [ "br0" ];
   };
 
   users.users.admin = {
@@ -115,7 +84,6 @@
   environment.systemPackages = with pkgs; [
     htop
     iw
-    wireless-tools
     tcpdump
     iptables
     bridge-utils
