@@ -52,8 +52,8 @@ fi
 echo "   ✓ VM built successfully"
 
 # Extract paths from the built VM
-KERNEL_PATH=$(cat result/bin/run-routervm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
-INITRD_PATH=$(cat result/bin/run-routervm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
+KERNEL_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
+INITRD_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
 SYSTEM_PATH=$(echo "$KERNEL_PATH" | sed "s|/kernel||")
 echo "   ✓ Extracted boot paths: kernel=$KERNEL_PATH"
 
@@ -313,8 +313,8 @@ fi
 echo "   ✓ VM built successfully"
 
 # Extract paths from the built VM
-KERNEL_PATH=$(cat result/bin/run-routervm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
-INITRD_PATH=$(cat result/bin/run-routervm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
+KERNEL_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-kernel \([^[:space:]]*\).*/\1/p")
+INITRD_PATH=$(cat result/bin/run-router-vm-vm | sed -n "s/.*-initrd \([^[:space:]]*\).*/\1/p")
 SYSTEM_PATH=$(echo "$KERNEL_PATH" | sed "s|/kernel||")
 echo "   ✓ Extracted boot paths: kernel=$KERNEL_PATH"
 echo "4. Generating router VM NixOS configuration..."
