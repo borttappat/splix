@@ -1,59 +1,18 @@
-# Router VM NixOS Configuration
-# This will run inside the VM with the passed-through WiFi card
-
-{ config, pkgs, ... }:
+# User-customizable router VM configuration
+# This file is NEVER overwritten by the generator
+{ config, pkgs, lib, ... }:
 
 {
-  # Basic system configuration
-  system.stateVersion = "24.05";
+  imports = [
+    ./router-vm-hardware.nix  # Hardware-specific generated config
+  ];
+
+  # User customizations - edit freely
+  networking.hostName = "router-vm";
   
-  # Enable WiFi and networking
-  networking = {
-    hostName = "routervm";
-    wireless.enable = true;
-    wireless.networks = {
-      # Configure your WiFi network here
-      # "YourNetworkName" = {
-      #   psk = "your-password";
-      # };
-    };
-    
-    # Enable IP forwarding for routing
-    enableIPv6 = false;  # Simplify for now
-    firewall = {
-      enable = true;
-      allowedTCPPorts = [ 22 53 ];
-      allowedUDPPorts = [ 53 67 68 ];
-    };
-  };
-
-  # DHCP server for guest VMs
-
-  # DNS server
-  services.dnsmasq = {
-    enable = true;
-    settings = {
-      server = [ "8.8.8.8" "1.1.1.1" ];
-      interface = [ "enp2s0" ];
-    };
-  };
-
-  # NAT configuration
-  networking.nat = {
-    enable = true;
-    internalInterfaces = [ "enp2s0" ];
-    externalInterface = "wlan0";  # WiFi interface from passthrough
-  };
-
-  # SSH for management
-  services.openssh = {
-    enable = true;
-    settings.PasswordAuthentication = true;
-  };
-
-  # Essential packages for hardware detection and WiFi
+  # Essential packages - add/remove as needed
   environment.systemPackages = with pkgs; [
-    # Hardware detection
+    # Hardware detection tools
     pciutils
     usbutils
     lshw
@@ -73,19 +32,41 @@
     vim
     tmux
     htop
+    curl
+    wget
     
     # Network management
     networkmanager
   ];
 
-  # Auto-login for console access
-  services.getty.autologinUser = "admin";
+  # WiFi configuration
+  hardware.enableRedistributableFirmware = true;
+  networking.wireless.enable = false; # Use NetworkManager instead
   
-  # Create ${realUser} user
+  # NetworkManager configuration
+  networking.networkmanager = {
+    enable = true;
+    unmanaged = [ "eth0" ];
+  };
+
+  # User account
   users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
-    # Add your SSH keys here
-    # openssh.authorizedKeys.keys = [ "ssh-ed25519 ..." ];
+    password = "admin";
   };
+
+  # Sudo configuration
+  security.sudo.extraRules = [{
+    users = [ "admin" ];
+    commands = [{
+      command = "ALL";
+      options = [ "NOPASSWD" ];
+    }];
+  }];
+  
+  # Auto-login for testing
+  services.getty.autologinUser = "admin";
+  
+  system.stateVersion = "24.05";
 }

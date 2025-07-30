@@ -386,19 +386,38 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
     };
   };
 
-  # Basic system packages
+# Essential packages for hardware detection and WiFi
   environment.systemPackages = with pkgs; [
+    # Hardware detection
+    pciutils
+    usbutils
+    lshw
+    
+    # Network tools
+    iproute2
+    bridge-utils
+    iptables
+    tcpdump
+    
+    # WiFi essentials
+    iw
+    wireless-tools
+    wpa_supplicant
+    
+    # System tools
     vim
     tmux
     htop
-    tcpdump
-    iptables
-    iproute2
+    
+    # Network management
     networkmanager
-    dnsmasq
   ];
 
   # Enable NetworkManager for WiFi management
+  # Enable WiFi with proper firmware
+  hardware.enableRedistributableFirmware = true;
+  networking.wireless.enable = false; # Use NetworkManager instead
+
   networking.networkmanager = {
     enable = true;
     unmanaged = [ "eth0" ];
