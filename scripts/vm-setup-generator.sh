@@ -401,7 +401,6 @@ cat > "$CONFIG_DIR/router-vm-config.nix" << 'EOF'
     
     # WiFi essentials
     iw
-    wireless-tools
     wpa_supplicant
     
     # System tools
