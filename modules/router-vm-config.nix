@@ -9,7 +9,7 @@
   
   # Enable WiFi and networking
   networking = {
-    hostName = "${realUser}-vm";
+    hostName = "routervm";
     wireless.enable = true;
     wireless.networks = {
       # Configure your WiFi network here
@@ -48,7 +48,7 @@
   # SSH for management
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = false;
+    settings.PasswordAuthentication = true;
   };
 
   # Essential packages
@@ -57,13 +57,14 @@
     tcpdump
     netcat
     iptables
+    networkmanager
   ];
 
   # Auto-login for console access
-  services.getty.autologinUser = "${realUser}";
+  services.getty.autologinUser = "admin";
   
   # Create ${realUser} user
-  users.users.${realUser} = {
+  users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
     # Add your SSH keys here
