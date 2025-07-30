@@ -1,2 +1,25 @@
-scripts/hardware-results.json
-scripts/hardware-results.env
+# Nix build results
+result
+result-*
+*.qcow2
+
+# Hardware detection results (machine-specific)
+hardware-results.env
+hardware-results.json
+
+# Generated configurations (machine-specific)
+scripts/generated-configs/
+
+# Nix flake lock (auto-generated)
+flake.lock
+
+# Backup files
+*.backup
+
+# VM disk images
+router-vm.qcow2
+/var/lib/libvirt/images/
+
+# Temporary files
+*.tmp
+*.log
