@@ -51,12 +51,30 @@
     settings.PasswordAuthentication = true;
   };
 
-  # Essential packages
+  # Essential packages for hardware detection and WiFi
   environment.systemPackages = with pkgs; [
-    iw
-    tcpdump
-    netcat
+    # Hardware detection
+    pciutils
+    usbutils
+    lshw
+    
+    # Network tools
+    iproute2
+    bridge-utils
     iptables
+    tcpdump
+    
+    # WiFi essentials
+    iw
+    wireless-tools
+    wpa_supplicant
+    
+    # System tools
+    vim
+    tmux
+    htop
+    
+    # Network management
     networkmanager
   ];
 
