@@ -25,7 +25,6 @@
     
     # WiFi essentials
     iw
-    wireless-tools
     wpa_supplicant
     
     # System tools
