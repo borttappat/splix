@@ -129,7 +129,7 @@ EOF
 
 echo "   ✓ Host passthrough config: $CONFIG_DIR/host-passthrough.nix"
 
-# 2. Generate VM domain XML with dynamic OVMF paths
+# 2. Generate VM domain XML for qcow2 boot
 echo "2. Generating VM configuration (passthrough)..."
 
 # Parse PCI address for XML
@@ -141,7 +141,7 @@ pci_bus_hex="0x$(printf "%02x" $((16#$pci_bus)))"
 pci_slot_hex="0x$(printf "%02x" $((16#$pci_slot)))"
 pci_func_hex="0x$pci_func"
 
-cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
+cat > "$CONFIG_DIR/router-vm-passthrough.xml" << 'EOF'
 <domain type='kvm'>
   <name>router-vm</name>
   <memory unit='KiB'>2097152</memory>
@@ -149,10 +149,6 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-    <firmware>efi</firmware>
-    <kernel>$KERNEL_PATH</kernel>
-    <initrd>$INITRD_PATH</initrd>
-    <cmdline>console=tty0 console=ttyS0,115200n8 init=$SYSTEM_PATH/init</cmdline>
     <bootmenu enable='yes'/>
   </os>
   <features>
@@ -172,15 +168,13 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
   <devices>
     <emulator>/run/current-system/sw/bin/qemu-system-x86_64</emulator>
     
-    <!-- Virtual disk -->
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'/>
-      <source file="/home/traum/splix/router-vm.qcow2"/>
+      <source file='/var/lib/libvirt/images/router-vm.qcow2'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>
     </disk>
     
-    <!-- WiFi card passthrough -->
     <hostdev mode='subsystem' type='pci' managed='yes'>
       <source>
         <address domain='0x0000' bus='$pci_bus_hex' slot='$pci_slot_hex' function='$pci_func_hex'/>
@@ -188,34 +182,20 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
       <address type='pci' domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
     </hostdev>
     
-    <!-- Virtual network for management -->
     <interface type='bridge'>
-      <source bridge='virbr1'/>
+      <source bridge='virbr0'/>
       <model type='virtio'/>
     </interface>
     
-    <!-- Console access -->
     <console type='pty'>
       <target type='serial' port='0'/>
     </console>
     
-    <!-- VNC for graphical access -->
     <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
     
-    <!-- Input devices -->
     <input type='tablet' bus='usb'/>
     <input type='mouse' bus='ps2'/>
     <input type='keyboard' bus='ps2'/>
-    <!-- 9p filesystem for Nix store access -->
-    <filesystem type="mount" accessmode="passthrough">
-      <source dir="/nix/store"/>
-      <target dir="nix-store"/>
-      <driver type="path" wrpolicy="immediate"/>
-    </filesystem>
-    <filesystem type="mount" accessmode="passthrough">
-      <source dir="/tmp/shared"/>
-      <target dir="shared"/>
-    </filesystem>
   </devices>
 </domain>
 EOF
