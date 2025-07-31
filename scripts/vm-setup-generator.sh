@@ -149,6 +149,7 @@ cat > "$CONFIG_DIR/router-vm-passthrough.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
+    <firmware>efi</firmware>
     <kernel>$KERNEL_PATH</kernel>
     <initrd>$INITRD_PATH</initrd>
     <cmdline>console=tty0 console=ttyS0,115200n8 init=$SYSTEM_PATH/init</cmdline>
@@ -232,6 +233,7 @@ cat > "$CONFIG_DIR/router-vm-virtio.xml" << EOF
   <vcpu placement='static'>2</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
+    <firmware>efi</firmware>
     <kernel>$KERNEL_PATH</kernel>
     <initrd>$INITRD_PATH</initrd>
     <cmdline>console=tty0 console=ttyS0,115200n8 init=$SYSTEM_PATH/init</cmdline>
