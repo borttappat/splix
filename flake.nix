@@ -30,7 +30,7 @@
           modules = [
             ./modules/router-vm-config.nix
             "${toString nixpkgs}/nixos/modules/profiles/qemu-guest.nix"
-            {
+            ({ config, pkgs, lib, ... }: {
               fileSystems."/" = {
                 device = "/dev/disk/by-label/nixos";
                 fsType = "ext4";
@@ -38,9 +38,9 @@
               };
               boot.growPartition = true;
               boot.loader.grub.device = "/dev/vda";
-              boot.loader.timeout = 0;
+              boot.loader.timeout = lib.mkForce 0;
               system.stateVersion = "24.05";
-            }
+            })
           ];
         };
       };
