@@ -105,6 +105,9 @@ sudo virt-install \
 
 log "✅ VM created successfully!"
 log ""
+log "Waiting for VM to fully boot..."
+sleep 45
+log "✅ VM should be ready for console access"
 log "Next steps:"
 log "  Check status:  sudo virsh --connect qemu:///system list"
 log "  Console:       sudo virsh --connect qemu:///system console $vm_name"
