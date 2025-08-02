@@ -4,7 +4,7 @@ imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
 
 boot.loader.grub.enable = true;
 boot.loader.grub.device = "/dev/vda";
-boot.loader.timeout = 5;
+boot.loader.timeout = lib.mkForce 5;
 boot.growPartition = true;
 
 boot.kernelParams = [ 
