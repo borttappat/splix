@@ -1,61 +1,103 @@
-# User-customizable router VM configuration
-# This file is NEVER overwritten by the generator
 { config, pkgs, lib, ... }:
 
 {
-  imports = [
-    ./router-vm-hardware.nix  # Hardware-specific generated config
-  ];
+  imports = [ ];
 
-  # User customizations - edit freely
-  networking.hostName = "router-vm";
+  # Essential boot configuration for VM
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/vda";
+  };
+  boot.loader.timeout = lib.mkDefault 1;
   
-  # Essential packages - add/remove as needed
+  boot.initrd.availableKernelModules = [ "ahci" "xhci_pci" "virtio_pci" "sr_mod" "virtio_blk" ];
+  boot.kernelModules = [ "kvm-intel" "af_packet" ];
+
+  # File systems - use label for flexibility
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+    autoResize = true;
+  };
+
+  # Network configuration - Router mode
+  networking = {
+    hostName = "router-vm";
+    useDHCP = false;
+    
+    # Test interface for QEMU user networking
+    interfaces.eth0 = {
+      useDHCP = true;
+    };
+    
+    # WAN interface (for when WiFi is passed through)
+    interfaces.wlan0 = {
+      useDHCP = lib.mkDefault true;
+    };
+
+    # Enable forwarding and NAT
+    nat = {
+      enable = true;
+      externalInterface = "wlan0";
+      internalInterfaces = [ "eth0" ];
+    };
+    
+    firewall = {
+      enable = true;
+      trustedInterfaces = [ "eth0" ];
+      allowPing = true;
+    };
+  };
+
+  # DHCP and DNS services
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      interface = "eth0";
+      dhcp-range = "192.168.100.50,192.168.100.150,12h";
+      dhcp-option = [
+        "option:router,192.168.100.2"
+        "option:dns-server,192.168.100.2"
+      ];
+      server = [ "8.8.8.8" "8.8.4.4" ];
+      cache-size = 1000;
+    };
+  };
+
+  # Essential packages for hardware detection and WiFi
   environment.systemPackages = with pkgs; [
-    # Hardware detection tools
     pciutils
     usbutils
     lshw
-    
-    # Network tools
     iproute2
     bridge-utils
     iptables
     tcpdump
-    
-    # WiFi essentials
     iw
     wpa_supplicant
-    
-    # System tools
     vim
     tmux
     htop
-    curl
-    wget
-    
-    # Network management
     networkmanager
   ];
 
-  # WiFi configuration
+  # Enable NetworkManager for WiFi management
   hardware.enableRedistributableFirmware = true;
-  networking.wireless.enable = false; # Use NetworkManager instead
-  
-  # NetworkManager configuration
+  networking.wireless.enable = false;
+
   networking.networkmanager = {
     enable = true;
     unmanaged = [ "eth0" ];
   };
 
-  # User account
+  # User configuration
   users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
     password = "admin";
   };
 
-  # Sudo configuration
+  # Allow passwordless sudo for admin user
   security.sudo.extraRules = [{
     users = [ "admin" ];
     commands = [{
@@ -64,8 +106,21 @@
     }];
   }];
   
-  # Auto-login for testing
+  # Enable getty autologin for testing
   services.getty.autologinUser = "admin";
   
+  # VM specific configuration for testing
+  virtualisation.vmVariant = {
+    virtualisation = {
+      memorySize = 2048;
+      cores = 2;
+      graphics = false;
+      qemu.options = [
+        "-nographic"
+        "-serial mon:stdio"
+      ];
+    };
+  };
+
   system.stateVersion = "24.05";
 }

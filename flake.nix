@@ -2,7 +2,7 @@
   description = "NixOS VM Router Setup";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
     nixos-generators = {
       url = "github:nix-community/nixos-generators";
@@ -16,12 +16,36 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
+      packages.${system} = {
+        minimal-vm-qcow = nixos-generators.nixosGenerate {
+          inherit system;
+          modules = [ ./modules/minimal-vm-config.nix ];
+          format = "qcow";
+        };
+        
+        router-vm-qcow = nixos-generators.nixosGenerate {
+          inherit system;
+          modules = [ ./modules/router-vm-config.nix ];
+          format = "qcow";
+        };
+      };
+
       nixosConfigurations = {
+        router-host-import = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            /etc/nixos/configuration.nix
+            /etc/nixos/hardware-configuration.nix
+            ./modules/vm-router/host-test.nix
+            ./hosts/router-host/configuration.nix
+          ];
+        };
+
         router-host = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
             /etc/nixos/hardware-configuration.nix
-            ./modules/vm-router/host-passthrough.nix
+            ./modules/vm-router/host-passthrough-standalone.nix
           ];
         };
 
@@ -29,44 +53,15 @@
           inherit system;
           modules = [
             ./modules/router-vm-config.nix
-            "${toString nixpkgs}/nixos/modules/profiles/qemu-guest.nix"
-            ({ config, pkgs, lib, ... }: {
+            {
               fileSystems."/" = {
-                device = "/dev/disk/by-label/nixos";
+                device = "/dev/vda";
                 fsType = "ext4";
-                autoResize = true;
               };
-              boot.growPartition = true;
               boot.loader.grub.device = "/dev/vda";
-              boot.loader.timeout = lib.mkForce 0;
               system.stateVersion = "24.05";
-            })
+            }
           ];
-        };
-      };
-
-      packages.${system} = {
-        router-vm-image = nixos-generators.nixosGenerate {
-          system = "x86_64-linux";
-          modules = [
-            ./modules/router-vm-config.nix
-            "${toString nixpkgs}/nixos/modules/profiles/qemu-guest.nix"
-            ({ config, pkgs, lib, ... }: {
-              virtualisation.diskSize = 20 * 1024;
-              boot.growPartition = true;
-              boot.kernelParams = ["console=ttyS0"];
-              boot.loader.grub.device = "/dev/vda";
-              boot.loader.timeout = lib.mkForce 0;
-              fileSystems."/" = {
-                device = "/dev/disk/by-label/nixos";
-                fsType = "ext4";
-                autoResize = true;
-              };
-              services.qemuGuest.enable = true;
-              system.stateVersion = "24.05";
-            })
-          ];
-          format = "qcow";
         };
       };
 
