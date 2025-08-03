@@ -242,7 +242,6 @@ sudo virt-install \
 --nographics \
 --console pty,target_type=virtio \
 --network network=default,model=virtio \
---network bridge=virbr1,model=virtio \
 --noautoconsole \
 --import
 
