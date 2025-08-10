@@ -325,8 +325,8 @@ show_status() {
     if [[ -f "$SPLIX_DIR/hardware-results.env" ]]; then
         source "$SPLIX_DIR/hardware-results.env"
         echo "Compatibility Score: ${COMPATIBILITY_SCORE:-Unknown}/10"
-        echo "WiFi Interface: ${BEST_INTERFACE:-Unknown}"
-        echo "PCI Device: ${DEVICE_ID:-Unknown}"
+        echo "WiFi Interface: ${PRIMARY_INTERFACE:-Unknown}"
+        echo "PCI Device: ${PRIMARY_ID:-Unknown}"
     else
         echo "[FAIL] Hardware detection not run"
     fi
