@@ -1,126 +1,89 @@
-{ config, pkgs, lib, ... }:
-
+# Router VM NixOS Configuration
+{ config, lib, pkgs, modulesPath, ... }:
 {
-  imports = [ ];
+  # Allow unfree firmware (needed for Intel WiFi)
+  nixpkgs.config.allowUnfree = true;
 
-  # Essential boot configuration for VM
-  boot.loader.grub = {
-    enable = true;
-    device = "/dev/vda";
-  };
-  boot.loader.timeout = lib.mkDefault 1;
-  
-  boot.initrd.availableKernelModules = [ "ahci" "xhci_pci" "virtio_pci" "sr_mod" "virtio_blk" ];
-  boot.kernelModules = [ "kvm-intel" "af_packet" ];
+  # ESSENTIAL: Import QEMU guest profile for VM compatibility
+  imports = [ 
+    (modulesPath + "/profiles/qemu-guest.nix")
+  ];
 
-  # File systems - use label for flexibility
-  fileSystems."/" = {
-    device = "/dev/disk/by-label/nixos";
-    fsType = "ext4";
-    autoResize = true;
-  };
+  # Essential virtio drivers for VM
+  boot.initrd.availableKernelModules = [
+    "virtio_balloon" "virtio_blk" "virtio_pci" "virtio_ring"
+    "virtio_net" "virtio_scsi"
+  ];
 
-  # Network configuration - Router mode
+  # Console access for virsh console
+  boot.kernelParams = [ 
+    "console=tty1" 
+    "console=ttyS0,115200n8" 
+  ];
+
+  # Basic system configuration
+  system.stateVersion = "24.05";
+
+  # Networking configuration
   networking = {
     hostName = "router-vm";
     useDHCP = false;
+    enableIPv6 = false;
     
-    # Test interface for QEMU user networking
-    interfaces.eth0 = {
-      useDHCP = true;
-    };
+    # Use NetworkManager (disable wpa_supplicant)
+    networkmanager.enable = true;
+    wireless.enable = false;  # Conflicts with NetworkManager
     
-    # WAN interface (for when WiFi is passed through)
-    interfaces.wlan0 = {
-      useDHCP = lib.mkDefault true;
-    };
-
-    # Enable forwarding and NAT
+    # Enable IP forwarding for routing
     nat = {
       enable = true;
-      externalInterface = "wlan0";
-      internalInterfaces = [ "eth0" ];
+      # We'll configure interfaces after seeing actual names
+      # internalInterfaces = [ "eth1" ];  # Bridge interface
+      # externalInterface = "enp1s0";   # Passthrough WiFi
     };
     
     firewall = {
       enable = true;
-      trustedInterfaces = [ "eth0" ];
-      allowPing = true;
+      allowedTCPPorts = [ 22 53 ];
+      allowedUDPPorts = [ 53 67 68 ];
     };
   };
 
-  # DHCP and DNS services
-  services.dnsmasq = {
-    enable = true;
-    settings = {
-      interface = "eth0";
-      dhcp-range = "192.168.100.50,192.168.100.150,12h";
-      dhcp-option = [
-        "option:router,192.168.100.2"
-        "option:dns-server,192.168.100.2"
-      ];
-      server = [ "8.8.8.8" "8.8.4.4" ];
-      cache-size = 1000;
-    };
-  };
+  # Enable all WiFi firmware
+  hardware.enableAllFirmware = true;
 
-  # Essential packages for hardware detection and WiFi
+  # Essential packages
   environment.systemPackages = with pkgs; [
-    pciutils
-    usbutils
-    lshw
-    iproute2
-    bridge-utils
-    iptables
-    tcpdump
-    iw
-    wpa_supplicant
-    vim
-    tmux
-    htop
-    networkmanager
+    pciutils          # lspci command
+    usbutils          # lsusb command  
+    iw                # WiFi management
+    wirelesstools    # iwconfig, etc (fixed typo)
+    networkmanager    # Network management
+    dhcpcd            # DHCP client
+    iptables          # Firewall rules
+    bridge-utils      # Bridge management
+    tcpdump           # Network debugging
+    nettools          # netstat, etc
+    nano              # Text editor
   ];
 
-  # Enable NetworkManager for WiFi management
-  hardware.enableRedistributableFirmware = true;
-  networking.wireless.enable = false;
+  # VM services
+  services.qemuGuest.enable = true;
+  services.spice-vdagentd.enable = true;
 
-  networking.networkmanager = {
+  # SSH for management
+  services.openssh = {
     enable = true;
-    unmanaged = [ "eth0" ];
+    settings.PasswordAuthentication = true;  # For easier debugging
   };
 
-  # User configuration
-  users.users.admin = {
+  # Auto-login for console access
+  services.getty.autologinUser = "router";
+
+  # Create router user
+  users.users.router = {
     isNormalUser = true;
+    password = "router";  # Temporary for debugging
     extraGroups = [ "wheel" "networkmanager" ];
-    password = "admin";
   };
-
-  # Allow passwordless sudo for admin user
-  security.sudo.extraRules = [{
-    users = [ "admin" ];
-    commands = [{
-      command = "ALL";
-      options = [ "NOPASSWD" ];
-    }];
-  }];
-  
-  # Enable getty autologin for testing
-  services.getty.autologinUser = "admin";
-  
-  # VM specific configuration for testing
-  virtualisation.vmVariant = {
-    virtualisation = {
-      memorySize = 2048;
-      cores = 2;
-      graphics = false;
-      qemu.options = [
-        "-nographic"
-        "-serial mon:stdio"
-      ];
-    };
-  };
-
-  system.stateVersion = "24.05";
 }
