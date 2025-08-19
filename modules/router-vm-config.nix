@@ -1,47 +1,25 @@
 # Router VM NixOS Configuration
-{ config, lib, pkgs, modulesPath, ... }:
+# This will run inside the VM with the passed-through WiFi card
+
+{ config, pkgs, ... }:
+
 {
-  # Allow unfree firmware (needed for Intel WiFi)
-  nixpkgs.config.allowUnfree = true;
-
-  # ESSENTIAL: Import QEMU guest profile for VM compatibility
-  imports = [ 
-    (modulesPath + "/profiles/qemu-guest.nix")
-  ];
-
-  # Essential virtio drivers for VM
-  boot.initrd.availableKernelModules = [
-    "virtio_balloon" "virtio_blk" "virtio_pci" "virtio_ring"
-    "virtio_net" "virtio_scsi"
-  ];
-
-  # Console access for virsh console
-  boot.kernelParams = [ 
-    "console=tty1" 
-    "console=ttyS0,115200n8" 
-  ];
-
   # Basic system configuration
   system.stateVersion = "24.05";
-
-  # Networking configuration
+  
+  # Enable WiFi and networking
   networking = {
     hostName = "router-vm";
-    useDHCP = false;
-    enableIPv6 = false;
-    
-    # Use NetworkManager (disable wpa_supplicant)
-    networkmanager.enable = true;
-    wireless.enable = false;  # Conflicts with NetworkManager
-    
-    # Enable IP forwarding for routing
-    nat = {
-      enable = true;
-      # We'll configure interfaces after seeing actual names
-      # internalInterfaces = [ "eth1" ];  # Bridge interface
-      # externalInterface = "enp1s0";   # Passthrough WiFi
+    wireless.enable = true;
+    wireless.networks = {
+      # Configure your WiFi network here
+      # "YourNetworkName" = {
+      #   psk = "your-password";
+      # };
     };
     
+    # Enable IP forwarding for routing
+    enableIPv6 = false;  # Simplify for now
     firewall = {
       enable = true;
       allowedTCPPorts = [ 22 53 ];
@@ -49,41 +27,47 @@
     };
   };
 
-  # Enable all WiFi firmware
-  hardware.enableAllFirmware = true;
+  # DHCP server for guest VMs
 
-  # Essential packages
-  environment.systemPackages = with pkgs; [
-    pciutils          # lspci command
-    usbutils          # lsusb command  
-    iw                # WiFi management
-    wirelesstools    # iwconfig, etc (fixed typo)
-    networkmanager    # Network management
-    dhcpcd            # DHCP client
-    iptables          # Firewall rules
-    bridge-utils      # Bridge management
-    tcpdump           # Network debugging
-    nettools          # netstat, etc
-    nano              # Text editor
-  ];
+  # DNS server
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      server = [ "8.8.8.8" "1.1.1.1" ];
+      interface = [ "enp2s0" ];
+    };
+  };
 
-  # VM services
-  services.qemuGuest.enable = true;
-  services.spice-vdagentd.enable = true;
+  # NAT configuration
+  networking.nat = {
+    enable = true;
+    internalInterfaces = [ "enp2s0" ];
+    externalInterface = "wlan0";  # WiFi interface from passthrough
+  };
 
   # SSH for management
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = true;  # For easier debugging
+    settings.PasswordAuthentication = false;
   };
+
+  # Essential packages
+  environment.systemPackages = with pkgs; [
+    wirelesstools
+    iw
+    tcpdump
+    netcat
+    iptables
+  ];
 
   # Auto-login for console access
   services.getty.autologinUser = "router";
-
+  
   # Create router user
   users.users.router = {
     isNormalUser = true;
-    password = "router";  # Temporary for debugging
     extraGroups = [ "wheel" "networkmanager" ];
+    # Add your SSH keys here
+    # openssh.authorizedKeys.keys = [ "ssh-ed25519 ..." ];
   };
 }
