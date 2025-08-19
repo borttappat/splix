@@ -80,6 +80,16 @@ address = "192.168.100.1";
 prefixLength = 24;
 }];
 
+# Automatic route to router VM
+networking.routes = [
+  {
+    address = "0.0.0.0";
+    prefixLength = 0;
+    via = "192.168.100.253";
+    options = { dev = "virbr1"; };
+  }
+];
+
 # Allow forwarding for VM network
 networking.firewall = {
 extraCommands = ''
@@ -405,7 +415,6 @@ sed -i "s/PRIMARY_ID_PLACEHOLDER/$PRIMARY_ID/g" "$CONFIG_DIR/emergency-recovery.
 
 chmod +x "$CONFIG_DIR/emergency-recovery.sh"
 log "   ✓ Bulletproof emergency recovery script: $CONFIG_DIR/emergency-recovery.sh"
-
 
 log ""
 log "=== Configuration Generation Complete ==="
