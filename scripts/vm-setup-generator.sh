@@ -406,16 +406,6 @@ sed -i "s/PRIMARY_ID_PLACEHOLDER/$PRIMARY_ID/g" "$CONFIG_DIR/emergency-recovery.
 chmod +x "$CONFIG_DIR/emergency-recovery.sh"
 log "   ✓ Bulletproof emergency recovery script: $CONFIG_DIR/emergency-recovery.sh"
 
-log "6. Copying router VM config to modules..."
-
-# Copy the generated router VM config to modules directory
-mkdir -p "$PROJECT_DIR/modules"
-if [[ -f "$CONFIG_DIR/router-vm-config.nix" ]]; then
-cp "$CONFIG_DIR/router-vm-config.nix" "$PROJECT_DIR/modules/"
-log "   ✓ Router VM config copied to modules/"
-else
-log "   ! Router VM config not found, using existing modules/router-vm-config.nix"
-fi
 
 log ""
 log "=== Configuration Generation Complete ==="
