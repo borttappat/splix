@@ -213,59 +213,23 @@ dotfiles_integration() {
 vm_testing() {
     log "Testing router VM with safe networking..."
 
-    # Build VM using your proven working approach
-    log "Building router VM..."
-    cleanup_existing_vms
-    cd "$SPLIX_DIR"
-    if ! nix build .#router-vm-qcow --print-build-logs; then
-        error "Router VM build failed"
+    if [[ ! -f "$SCRIPT_DIR/generated-configs/test-router-vm.sh" ]]; then
+        error "Generated test script not found. Run config generation first."
         return 1
     fi
 
-    # Deploy using your proven virt-install pattern (from success guide)
-    log "Deploying router VM for testing..."
-    readonly VM_NAME="router-vm"
-    readonly SOURCE_IMAGE="$SPLIX_DIR/result/nixos.qcow2"
-    readonly TARGET_IMAGE="/var/lib/libvirt/images/$VM_NAME.qcow2"
+    log "Using generated test deployment script..."
+    "$SCRIPT_DIR/generated-configs/test-router-vm.sh"
 
-    # Clean up existing VM
-    sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-    sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-
-    # Copy VM image (same as your working approach)
-    sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
-    if id "libvirt-qemu" >/dev/null 2>&1; then
-        sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
-    else
-        sudo chmod 644 "$TARGET_IMAGE"
-    fi
-
-    # Deploy with your proven virt-install pattern (TEST MODE)
-    sudo virt-install \
-        --connect qemu:///system \
-        --name="$VM_NAME" \
-        --memory=2048 \
-        --vcpus=2 \
-        --disk "$TARGET_IMAGE,device=disk,bus=virtio" \
-        --os-variant=nixos-unstable \
-        --boot=hd \
-        --nographics \
-        --console pty,target_type=virtio \
-        --network network=default,model=virtio \
-        --noautoconsole \
-        --import
-
-    # Wait and connect (same as your success guide)
-    log "Waiting for VM to boot..."
-    sleep 30
-
-    if sudo virsh --connect qemu:///system list | grep -q "$VM_NAME.*running"; then
-        log "✅ Router VM started successfully!"
+    if sudo virsh --connect qemu:///system list | grep -q "router-vm-test.*running"; then
+        log "✅ Test VM started successfully!"
         log "Connecting to console (exit with Ctrl+])..."
-        sudo virsh --connect qemu:///system console "$VM_NAME"
+        sudo virsh --connect qemu:///system console router-vm-test
     else
-        error "VM failed to start"
+        error "Test VM failed to start"
     fi
+
+    read -p "Press Enter to continue..."
 }
 
 deploy_host_config() {
@@ -322,64 +286,18 @@ deploy_host_config() {
 start_router_vm() {
     log "Starting router VM with WiFi passthrough..."
 
-   # # Verify VFIO first
-    if [[ ! -f "$SPLIX_DIR/hardware-results.env" ]]; then
-        error "Run hardware detection first"
+    if [[ ! -f "$SCRIPT_DIR/generated-configs/deploy-router-vm.sh" ]]; then
+        error "Generated deployment script not found. Run config generation first."
+        read -p "Press Enter to continue..."
         return 1
     fi
 
-    source "$SPLIX_DIR/hardware-results.env"
-# Check VFIO infrastructure is ready
-#if ! lsmod | grep -q vfio_pci; then
-#    error "VFIO modules not loaded. Run 'Deploy Host Config' first and reboot"
-#    return 1
-#fi
+    log "Using generated deployment script..."
+    "$SCRIPT_DIR/generated-configs/deploy-router-vm.sh"
 
-local current_driver=$(lspci -nnk -s "00:14.3" | grep "Kernel driver in use:" | awk '{print $5}' || echo "none")
-log "WiFi card current driver: $current_driver (libvirt will handle VFIO binding automatically)"
-    # EXACT SAME BUILD AND DEPLOY as test mode
-    log "Building router VM..."
-    cd "$SPLIX_DIR"
-    cleanup_existing_vms
-    if ! nix build .#router-vm-qcow --print-build-logs; then
-        error "Router VM build failed"
-        return 1
-    fi
-
-    readonly VM_NAME="router-vm"
-    readonly SOURCE_IMAGE="$SPLIX_DIR/result/nixos.qcow2"
-    readonly TARGET_IMAGE="/var/lib/libvirt/images/$VM_NAME.qcow2"
-
-    # Same cleanup and copy
-    sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-    sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-    sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
-    if id "libvirt-qemu" >/dev/null 2>&1; then
-        sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
-    fi
-
-    # SAME virt-install but with passthrough (PASSTHROUGH MODE)
-    sudo virt-install \
-        --connect qemu:///system \
-        --name="$VM_NAME" \
-        --memory=2048 \
-        --vcpus=2 \
-        --disk "$TARGET_IMAGE,device=disk,bus=virtio" \
-        --os-variant=nixos-unstable \
-        --boot=hd \
-        --nographics \
-        --console pty,target_type=virtio \
-        --hostdev 00:14.3 \
-        --network bridge=virbr0,model=virtio \
-        --noautoconsole \
-        --import
-
-    log "Waiting for VM to boot with passthrough..."
-    sleep 30
-
-    if sudo virsh --connect qemu:///system list | grep -q "$VM_NAME.*running"; then
+    if sudo virsh --connect qemu:///system list | grep -q "router-vm-passthrough.*running"; then
         log "✅ Router VM started with WiFi passthrough!"
-        log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
+        log "Connect with: sudo virsh --connect qemu:///system console router-vm-passthrough"
         log "In VM, check: lspci -nnk | grep -i network"
     else
         error "VM failed to start with passthrough"
@@ -448,81 +366,36 @@ show_status() {
 
 connect_to_router() {
     log "Connecting to router VM console..."
-    
-    if ! sudo virsh list | grep -q "router-vm"; then
-        error "Router VM is not running. Start it first with option 6."
+
+    if sudo virsh list | grep -q "router-vm.*running"; then
+        vm_name=$(sudo virsh list | grep "router-vm.*running" | awk '{print $2}' | head -1)
+        log "Found running VM: $vm_name"
+    else
+        error "No router VM is running. Start it first with option 6."
         read -p "Press Enter to continue..."
         return 1
     fi
-    
+
     log "Use Ctrl+] to exit console"
     sleep 2
-    
-    sudo virsh console router-vm
-    
+
+    sudo virsh console "$vm_name"
+
     read -p "Press Enter to continue..."
 }
 
 emergency_recovery() {
     log "=== EMERGENCY NETWORK RECOVERY ==="
 
-    # Load hardware info with fallback
-    if [[ -f "$SPLIX_DIR/hardware-results.env" ]]; then
-        source "$SPLIX_DIR/hardware-results.env"
-        # Use the actual variable names from your hardware detection
-        PCI_SLOT="${PRIMARY_PCI_SLOT:-00:14.3}"
-        DEVICE_ID="${DEVICE_ID:-8086:a370}"
-        log "Target device: $PCI_SLOT ($DEVICE_ID)"
-    else
-        log "No hardware info found - using detection"
-        PCI_SLOT="00:14.3"
-        DEVICE_ID="8086:a370"
+    if [[ ! -f "$SCRIPT_DIR/generated-configs/emergency-recovery.sh" ]]; then
+        error "Generated emergency recovery script not found. Run config generation first."
+        read -p "Press Enter to continue..."
+        return 1
     fi
 
-    # Step 1: Force stop ALL VMs
-    log "Stopping all VMs..."
-    for vm in router-vm router-vm-test router-vm-passthrough splix-minimal-vm; do
-        sudo virsh --connect qemu:///system destroy "$vm" 2>/dev/null || true
-        sudo virsh --connect qemu:///system undefine "$vm" --nvram 2>/dev/null || true
-    done
+    log "Using generated emergency recovery script..."
+    sudo "$SCRIPT_DIR/generated-configs/emergency-recovery.sh"
 
-    # Step 2: Aggressively unbind from VFIO
-    log "Unbinding WiFi card from VFIO..."
-    echo "$PCI_SLOT" | sudo tee /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
-
-    # Step 3: Remove device ID override
-    log "Removing VFIO device ID override..."
-    echo "$DEVICE_ID" | sudo tee /sys/bus/pci/drivers/vfio-pci/remove_id 2>/dev/null || true
-
-    # Step 4: Force load iwlwifi
-    log "Loading iwlwifi driver..."
-    sudo modprobe iwlwifi
-
-    # Step 5: Force bind to iwlwifi
-    log "Binding WiFi card to iwlwifi..."
-    echo "$PCI_SLOT" | sudo tee /sys/bus/pci/drivers/iwlwifi/bind 2>/dev/null || true
-
-    # Step 6: Restart NetworkManager with retry
-    log "Restarting NetworkManager..."
-    sudo systemctl restart NetworkManager
-    sleep 5
-    sudo systemctl restart NetworkManager
-
-    # Step 7: Test connectivity with extended retry
-    log "Testing connectivity..."
-    for i in {1..30}; do
-        if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
-            log "✅ Network connectivity restored! (attempt $i)"
-            read -p "Press Enter to continue..."
-            return 0
-        fi
-        sleep 2
-    done
-
-    log "❌ Automatic recovery failed. Manual steps:"
-    log "1. sudo systemctl restart NetworkManager"
-    log "2. nmcli device connect wlo1"
-    log "3. Check: lspci -nnk | grep -A3 'Network controller'"
     read -p "Press Enter to continue..."
 }
 
