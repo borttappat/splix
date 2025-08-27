@@ -2,6 +2,20 @@
 {
   nixpkgs.config.allowUnfree = true;
 
+  # Intel BE201 specific firmware
+  hardware.firmware = with pkgs; [
+    linux-firmware
+    (pkgs.stdenv.mkDerivation {
+      pname = "intel-be201-firmware";
+      version = "2024";
+      src = pkgs.linux-firmware;
+      installPhase = ''
+        mkdir -p $out/lib/firmware
+        cp -r lib/firmware/iwlwifi-* $out/lib/firmware/
+      '';
+    })
+  ];
+
   imports = [ 
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
@@ -16,7 +30,7 @@
     "console=ttyS0,115200n8" 
   ];
 
-  system.stateVersion = "24.05";
+  system.stateVersion = "25.05";
 
   networking = {
     hostName = "router-vm";
@@ -56,7 +70,10 @@
     "net.ipv4.conf.all.forwarding" = 1;
   };
 
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+
   hardware.enableAllFirmware = true;
+  hardware.enableRedistributableFirmware = true;
 
   environment.systemPackages = with pkgs; [
     pciutils usbutils iw wirelesstools networkmanager
@@ -79,3 +96,4 @@
     extraGroups = [ "wheel" "networkmanager" ];
   };
 }
+

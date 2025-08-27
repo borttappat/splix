@@ -5,7 +5,7 @@
 boot.kernelParams = [ 
 "intel_iommu=on" 
 "iommu=pt" 
-"vfio-pci.ids=8086:a370"
+"vfio-pci.ids=8086:a840"
 ];
 
 # Load VFIO modules

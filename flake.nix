@@ -2,7 +2,7 @@
 description = "NixOS VM Router Setup";
 
 inputs = {
-nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
 flake-utils.url = "github:numtide/flake-utils";
 nixos-generators = {
 url = "github:nix-community/nixos-generators";
