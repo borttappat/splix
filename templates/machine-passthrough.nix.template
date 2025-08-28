@@ -1,0 +1,42 @@
+{ config, lib, pkgs, modulesPath, ... }:
+{
+boot.kernelParams = [ 
+    "intel_iommu=on" 
+    "iommu=pt" 
+    "vfio-pci.ids={{DEVICE_ID}}"
+];
+
+boot.blacklistedKernelModules = [ "{{PRIMARY_DRIVER}}" ];
+  
+boot.kernelModules = [ "vfio" "vfio_iommu_type1" "vfio_pci" ];
+  
+virtualisation.libvirtd = {
+    enable = true;
+    qemu = {
+        package = pkgs.qemu_kvm;
+        runAsRoot = true;
+        swtpm.enable = true;
+        ovmf = {
+            enable = true;
+            packages = [ pkgs.OVMFFull.fd ];
+        };
+    };
+};
+  
+networking.bridges.virbr1.interfaces = [];
+networking.interfaces.virbr1 = {
+    ipv4.addresses = [{
+        address = "192.168.100.1";
+        prefixLength = 24;
+    }];
+};
+  
+systemd.services.network-emergency = {
+    description = "Emergency network recovery";
+    serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "{{PROJECT_DIR}}/scripts/generated-configs/emergency-recovery.sh";
+        RemainAfterExit = false;
+    };
+};
+}
