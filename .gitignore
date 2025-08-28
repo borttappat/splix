@@ -1,5 +1,5 @@
 # Nix build results
-result
+result/
 result-*
 *.qcow2
 
@@ -25,4 +25,5 @@ router-vm.qcow2
 *.log
 result
 scripts/generated-configs/
+modules/router-generated/
 *.backup
