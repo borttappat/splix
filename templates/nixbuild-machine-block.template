@@ -1,0 +1,51 @@
+# For {{VENDOR}} {{MODEL}} specifically
+elif echo "$current_model" | grep -qi "{{MODEL_MATCH}}"; then
+    # Detect current specialisation
+    CURRENT_LABEL=$(nixos-version | grep -o '\''[a-zA-Z-]*setup'\'' || echo "base-setup")
+    echo "Current system: $CURRENT_LABEL"
+    
+    case "${1:-auto}" in
+        "router-boot")
+            echo "Building {{MACHINE_NAME}} with router specialisation, staging for boot..."
+            sudo nixos-rebuild boot --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "✅ Built. Reboot, then run '\''switch-to-router'\'' for router mode"
+            ;;
+        "router-switch")
+            echo "Building {{MACHINE_NAME}} and switching to router mode..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "Switching to router mode..."
+            switch-to-router
+            ;;
+        "base-switch")
+            echo "Building {{MACHINE_NAME}} and staying in base mode..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "✅ Base mode active"
+            ;;
+        *)
+            echo "Building {{MACHINE_NAME}} and maintaining current mode ($CURRENT_LABEL)..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            
+            # Add bridge recreation for router mode
+            if [[ "$CURRENT_LABEL" == "router-setup" ]]; then
+                echo "Ensuring virbr1 bridge exists for router mode..."
+                if ! ip link show virbr1 >/dev/null 2>&1; then
+                    sudo ip link add virbr1 type bridge
+                    sudo ip addr add 192.168.100.1/24 dev virbr1
+                    sudo ip link set virbr1 up
+                    echo "✓ virbr1 bridge recreated"
+                else
+                    echo "✓ virbr1 bridge already exists"
+                fi
+            fi
+            
+            # Switch back to whatever mode we were in
+            if [[ "$CURRENT_LABEL" == "router-setup" ]]; then
+                echo "Restoring router mode..."
+                switch-to-router
+            else
+                echo "✅ Base mode active. Available commands:"
+                echo "  switch-to-router  - Enable router mode with VFIO"
+                echo "  switch-to-base    - Return to normal WiFi"
+            fi
+            ;;
+    esac
