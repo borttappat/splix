@@ -9,11 +9,29 @@ readonly GENERATED_DIR="$PROJECT_DIR/generated"
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 error() { echo "[ERROR] $*" >&2; exit 1; }
 
-check_prerequisites() {
-    if [[ ! -f "$PROJECT_DIR/hardware-results.env" ]]; then
-        error "Hardware detection results not found. Run: ./scripts/hardware-identify.sh"
+run_hardware_detection() {
+    log "=== Step 1: Hardware Detection ==="
+    
+    if [[ ! -f "$SCRIPT_DIR/hardware-identify.sh" ]]; then
+        error "hardware-identify.sh not found"
     fi
     
+    cd "$PROJECT_DIR"
+    ./scripts/hardware-identify.sh
+    
+    if [[ ! -f "hardware-results.env" ]]; then
+        error "Hardware detection failed - no results generated"
+    fi
+    
+    source hardware-results.env
+    if [[ "${COMPATIBILITY_SCORE:-0}" -lt 6 ]]; then
+        error "Hardware compatibility too low ($COMPATIBILITY_SCORE/10)"
+    fi
+    
+    log "Hardware detection complete: $COMPATIBILITY_SCORE/10"
+}
+
+check_prerequisites() {
     if [[ ! -f "$TEMPLATES_DIR/machine-passthrough.nix.template" ]]; then
         error "machine-passthrough.nix.template not found"
     fi
@@ -425,10 +443,13 @@ DEPLOYEOF
     log "Created: scripts/deploy-router-vm.sh (passthrough)"
 }
 
-# Update main function to include VM building
 main() {
-    log "=== Generating All Configurations ==="
+    log "=== Complete Machine Setup ==="
 
+    # Step 1: Run hardware detection first
+    run_hardware_detection
+    
+    # Step 2: Check other prerequisites
     check_prerequisites
     source "$PROJECT_DIR/hardware-results.env"
 
@@ -454,4 +475,8 @@ main() {
     log "All files created in: $GENERATED_DIR"
     log "VM image built at: $PROJECT_DIR/result/nixos.qcow2"
     log "Review: cat $GENERATED_DIR/README.md"
+    log ""
+    log "Remember to 'git add' generated files before building with nixbuild"
 }
+
+main "$@"
