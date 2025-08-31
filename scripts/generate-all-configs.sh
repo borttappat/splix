@@ -98,7 +98,7 @@ generate_deployment_scripts() {
     
     source "$PROJECT_DIR/hardware-results.env"
     
-    # Production deployment script using exact proven logic
+    # Production deployment script using exact proven logic with directory creation
     cat > "$GENERATED_DIR/scripts/deploy-router-vm.sh" << 'DEPLOYEOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -127,6 +127,9 @@ sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
 sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
 fi
 
+# Ensure images directory exists
+sudo mkdir -p /var/lib/libvirt/images
+
 # Copy VM image
 sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
 if id "libvirt-qemu" >/dev/null 2>&1; then
@@ -152,11 +155,11 @@ sudo virt-install \
 --noautoconsole \
 --import
 
-log "✅ Router VM deployed with WiFi passthrough!"
+log "Router VM deployed with WiFi passthrough!"
 log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
 DEPLOYEOF
 
-    # Test deployment script using proven logic but with default network
+    # Test deployment script with directory creation
     cat > "$GENERATED_DIR/scripts/test-router-vm.sh" << 'TESTEOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -185,6 +188,9 @@ sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
 sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
 fi
 
+# Ensure images directory exists
+sudo mkdir -p /var/lib/libvirt/images
+
 # Copy VM image
 sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
 if id "libvirt-qemu" >/dev/null 2>&1; then
@@ -209,9 +215,31 @@ sudo virt-install \
 --noautoconsole \
 --import
 
-log "✅ Test VM deployed!"
+log "Test VM deployed!"
 log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
 TESTEOF
+
+    # Start router VM wrapper script
+    cat > "$GENERATED_DIR/scripts/start-router-vm.sh" << 'STARTEOF'
+#!/run/current-system/sw/bin/bash
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+log() { echo "[Router VM] $*"; }
+
+log "Starting router VM with WiFi passthrough..."
+"$SCRIPT_DIR/deploy-router-vm.sh"
+
+if sudo virsh --connect qemu:///system list | grep -q "router-vm.*running"; then
+    vm_name=$(sudo virsh --connect qemu:///system list | grep "router-vm.*running" | awk '{print $2}' | head -1)
+    log "Router VM started: $vm_name"
+    log "Connect with: sudo virsh --connect qemu:///system console $vm_name"
+else
+    log "VM failed to start"
+    exit 1
+fi
+STARTEOF
 
     # Replace placeholders with actual values
     sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g; \
@@ -221,8 +249,9 @@ TESTEOF
     
     chmod +x "$GENERATED_DIR/scripts/deploy-router-vm.sh"
     chmod +x "$GENERATED_DIR/scripts/test-router-vm.sh"
+    chmod +x "$GENERATED_DIR/scripts/start-router-vm.sh"
     
-    log "Generated deployment scripts with proven logic"
+    log "Generated deployment scripts with directory creation"
 }
 
 create_summary_readme() {
@@ -247,6 +276,7 @@ create_summary_readme() {
 ### Scripts (using proven working logic)
 - \`scripts/deploy-router-vm.sh\` - Production deployment with $PRIMARY_PCI passthrough
 - \`scripts/test-router-vm.sh\` - Safe testing deployment
+- \`scripts/start-router-vm.sh\` - Router VM startup wrapper
 
 ## Next Steps
 
@@ -274,8 +304,7 @@ main() {
     
     log "=== Generation Complete ==="
     log "All files in: $GENERATED_DIR"
-    log "Uses exact proven deployment logic"
-    log "Self-contained - no dependency on old scripts"
+    log "Includes directory creation for libvirt images"
     log ""
     log "Remember to 'git add' generated files before building with nixbuild"
 }
