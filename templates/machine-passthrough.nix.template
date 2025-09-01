@@ -41,12 +41,4 @@ networking.firewall = {
     trustedInterfaces = [ "virbr1" ];
 };
 
-systemd.services.network-emergency = {
-    description = "Emergency network recovery";
-    serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "{{PROJECT_DIR}}/scripts/generated-configs/emergency-recovery.sh";
-        RemainAfterExit = false;
-    };
-};
 }
