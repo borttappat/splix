@@ -2,7 +2,6 @@
 {
   nixpkgs.config.allowUnfree = true;
 
-  # Intel BE201 specific firmware
   hardware.firmware = with pkgs; [
     linux-firmware
     (pkgs.stdenv.mkDerivation {
@@ -47,10 +46,24 @@
       }];
     };
     
+    interfaces.enp2s0 = {
+      ipv4.addresses = [{
+        address = "192.168.101.253";
+        prefixLength = 24;
+      }];
+    };
+    
+    interfaces.enp3s0 = {
+      ipv4.addresses = [{
+        address = "192.168.102.253";
+        prefixLength = 24;
+      }];
+    };
+    
     nat = {
       enable = true;
       externalInterface = "wlp5s0";
-      internalInterfaces = [ "enp1s0" ];
+      internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" ];
     };
     
     firewall = {
@@ -59,8 +72,23 @@
       allowedUDPPorts = [ 53 67 68 ];
       extraCommands = ''
         iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o wlp5s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o wlp5s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o wlp5s0 -j MASQUERADE
+        
         iptables -A FORWARD -i enp1s0 -o wlp5s0 -j ACCEPT
+        iptables -A FORWARD -i enp2s0 -o wlp5s0 -j ACCEPT
+        iptables -A FORWARD -i enp3s0 -o wlp5s0 -j ACCEPT
+        
         iptables -A FORWARD -i wlp5s0 -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp5s0 -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp5s0 -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        
+        iptables -A FORWARD -i enp1s0 -o enp2s0 -j ACCEPT
+        iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
+        iptables -A FORWARD -i enp1s0 -o enp3s0 -j ACCEPT
+        iptables -A FORWARD -i enp3s0 -o enp1s0 -j ACCEPT
+        iptables -A FORWARD -i enp2s0 -o enp3s0 -j ACCEPT
+        iptables -A FORWARD -i enp3s0 -o enp2s0 -j ACCEPT
       '';
     };
   };
@@ -96,4 +124,3 @@
     extraGroups = [ "wheel" "networkmanager" ];
   };
 }
-
