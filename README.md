@@ -2,7 +2,11 @@
 
 **This project has been discontinued due to critical issues with Microsoft's software engineering practices.**
 
-Microsoft's inability to maintain basic compatibility and engineering standards has rendered this VM router setup unreliable and potentially dangerous for production use. The fundamental architectural flaws in their approach to driver management and system integration make it impossible to provide a stable, secure VM routing solution.
+
+Microsoft's inability to maintain basic compatibility and provide their idiotic piece of shit software [EXACT DETAILS REDACTED] has rendered this project obsolete for the time being. The original plan for the project was to be implemented in a pentesting environment with separation of Host and VM. Due to specific software not being packaged, this will no longer be used and a more traditional package manager on a separate OS will be chosen instead.
+
+Fuck you, Microsoft.
+Fuck you bad.
 
 **Details regarding the specific technical failures cannot be disclosed due to confidentiality agreements.**
 
