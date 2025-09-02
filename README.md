@@ -15,7 +15,7 @@ Fuck you bad.
 - Consider pfSense or OPNsense on bare metal  
 - Avoid Microsoft-dependent virtualization stacks
 
-The code remains available for educational purposes only. **DO NOT USE IN PRODUCTION.**
+The code remains available for educational purposes only. The ´´scripts/generate-all-configs.sh´´ is the lastest working prototype and has proven to work with some tweaks depending on output. Also note that my **dotfiles** repo is a backbone for the output this project and script provides. **DO NOT USE IN PRODUCTION.**
 
 ---
 
