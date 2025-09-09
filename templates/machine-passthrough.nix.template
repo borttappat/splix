@@ -51,7 +51,7 @@ networking.interfaces.virbr3 = {
 
 # Allow forwarding for all VM networks
 networking.firewall = {
-    extraCommands = '\''
+    extraCommands = ''
         # Management bridge (virbr1)
         iptables -A FORWARD -i virbr1 -j ACCEPT
         iptables -A FORWARD -o virbr1 -j ACCEPT
@@ -70,7 +70,7 @@ networking.firewall = {
         iptables -A FORWARD -i virbr1 -o virbr3 -j ACCEPT
         iptables -A FORWARD -i virbr2 -o virbr3 -j ACCEPT
         iptables -A FORWARD -i virbr3 -o virbr2 -j ACCEPT
-    '\'';
+    '';
     trustedInterfaces = [ "virbr1" "virbr2" "virbr3" ];
 };
 

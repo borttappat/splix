@@ -2,19 +2,6 @@
 {
   nixpkgs.config.allowUnfree = true;
 
-  hardware.firmware = with pkgs; [
-    linux-firmware
-    (pkgs.stdenv.mkDerivation {
-      pname = "intel-be201-firmware";
-      version = "2024";
-      src = pkgs.linux-firmware;
-      installPhase = ''
-        mkdir -p $out/lib/firmware
-        cp -r lib/firmware/iwlwifi-* $out/lib/firmware/
-      '';
-    })
-  ];
-
   imports = [ 
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
@@ -62,7 +49,7 @@
     
     nat = {
       enable = true;
-      externalInterface = "wlp5s0";
+      externalInterface = "wlp7s0";
       internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" ];
     };
     
@@ -71,24 +58,15 @@
       allowedTCPPorts = [ 22 53 ];
       allowedUDPPorts = [ 53 67 68 ];
       extraCommands = ''
-        iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o wlp5s0 -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o wlp5s0 -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o wlp5s0 -j MASQUERADE
-        
-        iptables -A FORWARD -i enp1s0 -o wlp5s0 -j ACCEPT
-        iptables -A FORWARD -i enp2s0 -o wlp5s0 -j ACCEPT
-        iptables -A FORWARD -i enp3s0 -o wlp5s0 -j ACCEPT
-        
-        iptables -A FORWARD -i wlp5s0 -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i wlp5s0 -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i wlp5s0 -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        
-        iptables -A FORWARD -i enp1s0 -o enp2s0 -j ACCEPT
-        iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
-        iptables -A FORWARD -i enp1s0 -o enp3s0 -j ACCEPT
-        iptables -A FORWARD -i enp3s0 -o enp1s0 -j ACCEPT
-        iptables -A FORWARD -i enp2s0 -o enp3s0 -j ACCEPT
-        iptables -A FORWARD -i enp3s0 -o enp2s0 -j ACCEPT
+        iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o wlp7s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o wlp7s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o wlp7s0 -j MASQUERADE
+        iptables -A FORWARD -i enp1s0 -o wlp7s0 -j ACCEPT
+        iptables -A FORWARD -i enp2s0 -o wlp7s0 -j ACCEPT
+        iptables -A FORWARD -i enp3s0 -o wlp7s0 -j ACCEPT
+        iptables -A FORWARD -i wlp7s0 -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp7s0 -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp7s0 -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
       '';
     };
   };
