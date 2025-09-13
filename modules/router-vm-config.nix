@@ -84,10 +84,33 @@
   environment.systemPackages = with pkgs; [
     pciutils usbutils iw wirelesstools networkmanager
     dhcpcd iptables bridge-utils tcpdump nettools nano
+    dnsmasq
   ];
 
   services.qemuGuest.enable = true;
   services.spice-vdagentd.enable = true;
+
+# Replace the dnsmasq line in your router-vm-config.nix with this full block:
+services.dnsmasq = {
+  enable = true;
+  settings = {
+    interface = ["enp2s0" "enp3s0"];
+    dhcp-range = [
+      "enp2s0,192.168.101.10,192.168.101.100,24h"
+      "enp3s0,192.168.102.10,192.168.102.100,24h"
+    ];
+    dhcp-option = [
+      "enp2s0,option:router,192.168.101.253"
+      "enp2s0,option:dns-server,192.168.101.253"
+      "enp3s0,option:router,192.168.102.253"
+      "enp3s0,option:dns-server,192.168.102.253"
+    ];
+    server = ["8.8.8.8" "1.1.1.1"];
+    bind-interfaces = true;
+    log-dhcp = true;
+    log-queries = true;
+  };
+};
 
   services.openssh = {
     enable = true;
