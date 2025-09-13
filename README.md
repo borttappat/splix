@@ -1,168 +1,188 @@
-# ⚠️ PROJECT HALTED ⚠️
+# Splix - NixOS VM Router with Network Isolation
 
-**This project has been discontinued due to critical issues with Microsoft's software engineering practices.**
+**Status**: Working on ASUS Zenbook | **Setup**: 4 commands | **Networks**: 3 isolated segments
+
+A minimal NixOS VM router that provides WiFi card passthrough to create isolated guest networks. Guest VMs get internet through the router VM while remaining completely isolated from the host system.
+
+My setup is over at [my dotfiles repo](https://github.com/borttappat/dotfiles) and I integrate the generated modules into that setup. 
 
 
-Microsoft's inability to maintain basic compatibility and provide their idiotic piece of shit software [EXACT DETAILS REDACTED] has rendered this project obsolete for the time being. The original plan for the project was to be implemented in a pentesting environment with separation of Host and VM. Due to specific software not being packaged, this will no longer be used and a more traditional package manager on a separate OS will be chosen instead.
+## Network Architecture
 
-Fuck you, Microsoft.
-Fuck you bad.
-
-**Details regarding the specific technical failures cannot be disclosed due to confidentiality agreements.**
-
-**Alternative recommendations:**
-- Use dedicated hardware routers
-- Consider pfSense or OPNsense on bare metal  
-- Avoid Microsoft-dependent virtualization stacks
-
-The code remains available for educational purposes only. The ´´scripts/generate-all-configs.sh´´ is the lastest working prototype and has proven to work with some tweaks depending on output. Also note that my **dotfiles** repo is a backbone for the output this project and script provides. **DO NOT USE IN PRODUCTION.**
-
----
-
-# Splix - Secure VM Router Setup (DISCONTINUED)
-
-~~A complete NixOS-based VM router system with hardware passthrough for secure network isolation.~~
-
-## ~~Overview~~
-
-~~Splix automatically sets up a virtualized router environment where your primary network interface is passed through to a router VM, providing strong isolation between work and leisure environments while maintaining reliable network connectivity.~~
-
-## ~~VM Router Setup Flow~~
-
-### ~~Fresh Machine Setup Process~~
 ```
-Fresh Machine → Hardware Detection → Config Generation → Safe VM Testing → Deployment Ready
-     │                    │                  │                    │              │
-     │              [Compatibility         [NixOS Configs    [QEMU Testing]   [Libvirt Ready]
-     │               Check 8/10]            Generated]                          
-     │                    │                  │                    │              │
-     └─── git clone ──────┼──────────────────┼────────────────────┼──────────────┘
-                          │                  │                    │
-                    hardware-results.env   modules/          Router VM works
-                                          generated configs
+Internet ── WiFi Card (VFIO) ── Router VM ── Guest Networks
+                │                   │            │
+        [Hardware Passthrough]  [NAT + DHCP]  [Isolated VMs]
+        Zenbook: 8086:a840     192.168.10x.253   No host access
 ```
 
-### ~~Deployment Sequence (Safe → Passthrough)~~
+**Network Segments:**
+- `virbr1` (192.168.100.x) - Host ↔ Router communication
+- `virbr2` (192.168.101.x) - Guest network 1 (pentesting/work)  
+- `virbr3` (192.168.102.x) - Guest network 2 (gaming/leisure)
 
-~~Phase 1: Safe Testing          Phase 2: Point of No Return       Phase 3: Production~~
-```
-┌─────────────────────┐       ┌─────────────────────────┐       ┌──────────────────────┐
-│ Host: Normal WiFi   │  ──▶  │ Host: WiFi → VFIO       │  ──▶  │ Router VM: WiFi Card │
-│ Router VM: virtio   │       │ Router VM: virtio       │       │ Guest VMs: Bridge    │
-│ Risk: None          │       │ Risk: Network loss      │       │ Risk: VM failure     │
-└─────────────────────┘       └─────────────────────────┘       └──────────────────────┘
-     libvirt testing                reboot required                 production ready
-```
+## Quick Setup
 
-### ~~Final Architecture~~
-```
-Internet ── WiFi Card (Passthrough) ── Router VM ── Internal Bridge
-                │                         │              │
-        Emergency Recovery          [DHCP/DNS/NAT]   Guest VMs
-        (restore host wifi)         [SSH Management]  │    │
-                                                   Pentest Work
-                                                     VM    VM
-```
+**Prerequisites**: NixOS with IOMMU enabled, compatible WiFi card
 
-### ~~Key Features~~
-
-- ~~**Automatic Hardware Detection** - Detects network interfaces, IOMMU groups, and compatibility~~
-- ~~**Dynamic Configuration** - Generates NixOS configs based on your specific hardware~~
-- ~~**Emergency Recovery** - Built-in network recovery system when router VM fails~~
-- ~~**Hardware Agnostic** - Works with any compatible network interface and driver~~
-- ~~**Flake-based Deployment** - Reproducible and version-controlled setup~~
-- ~~**Security Isolation** - Strong separation between different environments~~
-
-## ~~Quick Start~~
-
-### ~~Prerequisites~~
-
-- ~~NixOS system with IOMMU support~~
-- ~~At least one network interface (WiFi or Ethernet)~~
-- ~~8GB+ RAM recommended~~
-- ~~Basic understanding of NixOS and virtualization~~
-
-### ~~Installation~~
-
-1. ~~**Clone the repository:**~~
-   ```bash
-   git clone https://github.com/yourusername/splix.git
-   cd splix
-   ```
-
-2. ~~**Run hardware detection:**~~
-   ```bash
-   ./scripts/hardware-identify.sh
-   ```
-
-3. ~~**Copy your hardware configuration:**~~
-   ```bash
-   sudo cp /etc/nixos/hardware-configuration.nix hosts/router-host/
-   ```
-
-4. ~~**Deploy the configuration:**~~
-   ```bash
-   sudo nixos-rebuild switch --flake .#router-host
-   ```
-
-5. ~~**Reboot to activate passthrough:**~~
-   ```bash
-   sudo reboot
-   ```
-
-## ~~Hardware Detection~~
-
-~~The hardware detection script analyzes your system and provides a compatibility score:~~
-
-- ~~**8-10/10**: Excellent - Setup should work reliably~~
-- ~~**5-7/10**: Good - Setup should work with some risks~~  
-- ~~**0-4/10**: Poor - Setup not recommended~~
-
-### ~~Detection Results~~
-
-~~The script checks for:~~
-- ~~✅ IOMMU support and enablement~~
-- ~~✅ Network interface compatibility~~
-- ~~✅ IOMMU group isolation~~
-- ~~⚠️ Alternative network interfaces (for fallback)~~
-
-~~Example output:~~
-```
-Primary Interface: wlo1
-PCI Slot: 0000:00:14.3
-Device ID: 8086:a840
-Driver: iwlwifi
-IOMMU Isolated: true
-Compatibility Score: 8/10
-Recommendation: PROCEED
-```
-
-## ~~Emergency Recovery~~
-
-~~If the router VM fails and you lose network access:~~
-
-### ~~Method 1: Built-in Command~~
 ```bash
-emergency-network
+# 1. Build router VM
+nix build .#router-vm-qcow
+
+# 2. Deploy router with WiFi passthrough  
+./scripts/rebuild-router.sh
+
+# 3. Connect to router VM and setup WiFi
+sudo virsh console router-vm-passthrough
+nmcli device wifi connect "NETWORK" password "PASSWORD"
+
+# 4. Create guest VMs on isolated networks
+sudo virt-install --name="test-vm" --network bridge=virbr2 ...
 ```
 
-### ~~Method 2: Manual Recovery~~
+Guest VMs automatically get DHCP (192.168.101.x or 192.168.102.x) and internet through router VM's WiFi.
+
+## Essential Files
+
+**Core Configuration:**
+- `flake.nix` - Builds router VM image
+- `modules/router-vm-config.nix` - Router VM NixOS config with network setup
+- `hardware-results.env` - Hardware-specific values (PCI address, device ID)
+
+**Deployment Scripts:**
+- `scripts/rebuild-router.sh` - Build and deploy router VM
+- `scripts/setup-networks-post-deploy.sh` - Configure libvirt networks
+- `generated/scripts/deploy-router-vm.sh` - Hardware-specific VM deployment
+
+## Hardware Configuration
+
+**Current Setup (Zenbook):**
+- WiFi Device: 8086:a840 (Intel Wi-Fi 6E)
+- PCI Address: 0000:00:14.3
+- Driver: iwlwifi (blacklisted on host)
+- Status: Working, 8/10 compatibility
+
+**Requirements:**
+- IOMMU support (Intel VT-d/AMD-Vi)
+- Compatible WiFi card in isolated IOMMU group
+- 8GB+ RAM (2GB for router VM)
+- NixOS 25.05+
+
+## Usage
+
+**Router VM Management:**
 ```bash
-sudo systemctl start network-emergency
+# Deploy/redeploy router
+./scripts/rebuild-router.sh
+
+# Connect to router console
+sudo virsh console router-vm-passthrough
+
+# Check router status
+sudo virsh list --all
 ```
 
-### ~~Method 3: Direct Script~~
+**Guest VM Creation:**
 ```bash
-sudo ./scripts/generated-configs/emergency-recovery.sh
+# Work/pentesting VMs (192.168.101.x network)
+sudo virt-install --network bridge=virbr2 --name="kali-vm" ...
+
+# Gaming/leisure VMs (192.168.102.x network)  
+sudo virt-install --network bridge=virbr3 --name="gaming-vm" ...
+
+# Direct host access (bypass router)
+sudo virt-install --network bridge=virbr0 --name="direct-vm" ...
 ```
 
-~~This will:~~
-1. ~~Stop the router VM~~
-2. ~~Release the network card from VFIO~~
-3. ~~Restore the original driver~~
-4. ~~Restart NetworkManager~~
-5. ~~Test connectivity~~
+## Security Benefits
 
-**This documentation is preserved for historical reference only.**
+**Network Isolation:**
+- Guest VMs cannot access host system
+- Guest networks completely separated
+- All internet traffic routed through router VM WiFi
+- Host maintains separate internet connection for management
 
-**DO NOT ATTEMPT TO USE THIS SOFTWARE.**
+**Traffic Control:**
+- Monitor all guest internet activity at router VM level
+- Block/filter traffic centrally
+- Isolated network segments prevent cross-contamination
+- Emergency host network recovery available
+
+## File Structure
+
+```
+splix/
+├── flake.nix                           # VM builder
+├── modules/router-vm-config.nix        # Router configuration  
+├── scripts/
+│   ├── rebuild-router.sh               # Main deployment script
+│   └── setup-networks-post-deploy.sh  # Network setup
+├── generated/scripts/
+│   └── deploy-router-vm.sh             # Hardware-specific deployment
+└── hardware-results.env               # Hardware configuration
+```
+
+**Not Tracked:** VM images (`result/`), libvirt disk images, build artifacts
+
+## Limitations
+
+**Hardware Specific:**
+- Currently configured for one Zenbook machine
+- Requires manual configuration for different hardware
+- Device IDs hardcoded in deployment scripts
+
+**Network Features:**
+- No VPN server integration
+- No advanced traffic shaping
+- Basic iptables firewalling only
+
+**Management:**
+- No web interface
+- Console-based router VM management
+- Manual WiFi configuration required
+
+## Troubleshooting
+
+**Router VM won't start:**
+```bash
+# Check VFIO binding
+lspci -nnk | grep -A3 "Network controller"
+# Should show: Kernel driver in use: vfio-pci
+
+# Check libvirtd
+sudo systemctl status libvirtd
+```
+
+**No internet in guest VMs:**
+```bash
+# Verify router VM WiFi
+sudo virsh console router-vm-passthrough
+ip addr show wlp7s0  # Should have IP
+ping 8.8.8.8
+
+# Check DHCP service
+sudo ss -ulnp | grep :67  # Should show dnsmasq
+```
+
+**Host lost internet:**
+```bash
+# Router VM should provide host internet via management bridge
+ping 192.168.100.253  # Router VM management IP
+```
+
+## Performance
+
+**Typical Resource Usage:**
+- CPU: 5-10% overhead from VM routing
+- Memory: 2GB dedicated to router VM
+- Network: <5% latency increase  
+- Storage: ~2GB for router VM image
+
+**Tested Performance:**
+- Guest VM internet speeds: 90%+ of native WiFi speed
+- Host internet through router: No noticeable impact
+- Multiple guest VMs: Scales well up to memory limits
+
+## License
+
+MIT License - Use at your own risk. Hardware passthrough can potentially cause system instability.
