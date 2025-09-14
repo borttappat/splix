@@ -8,13 +8,11 @@ elif echo "$current_model" | grep -qi "{{MODEL_MATCH}}"; then
         "router-boot")
             echo "Building {{MACHINE_NAME}} with router specialisation, staging for boot..."
             sudo nixos-rebuild boot --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
-            echo "✅ Built. Reboot, then run '\''switch-to-router'\'' for router mode"
             ;;
         "router-switch")
             echo "Building {{MACHINE_NAME}} and switching to router mode..."
             sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
             echo "Switching to router mode..."
-            switch-to-router
             ;;
         "base-switch")
             echo "Building {{MACHINE_NAME}} and staying in base mode..."
@@ -38,14 +36,5 @@ elif echo "$current_model" | grep -qi "{{MODEL_MATCH}}"; then
                 fi
             fi
             
-            # Switch back to whatever mode we were in
-            if [[ "$CURRENT_LABEL" == "router-setup" ]]; then
-                echo "Restoring router mode..."
-                switch-to-router
-            else
-                echo "✅ Base mode active. Available commands:"
-                echo "  switch-to-router  - Enable router mode with VFIO"
-                echo "  switch-to-base    - Return to normal WiFi"
-            fi
             ;;
     esac

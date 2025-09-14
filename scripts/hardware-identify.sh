@@ -3,6 +3,19 @@
 
 set -euo pipefail
 
+# Check if we have existing hardware results and are in router mode
+if [[ -f "hardware-results.env" ]]; then
+    if ip addr show virbr1 >/dev/null 2>&1 && [[ "$(ip route | grep default | awk '{print $5}' | head -1)" == "virbr1" ]]; then
+        echo "Router mode detected - using existing hardware results"
+        source hardware-results.env
+        if [[ -n "${PRIMARY_INTERFACE:-}" && -n "${PRIMARY_PCI:-}" && -n "${PRIMARY_ID:-}" ]]; then
+            echo "✓ Found: $PRIMARY_INTERFACE ($PRIMARY_ID) on $PRIMARY_PCI"
+            echo "✓ Compatibility: ${COMPATIBILITY_SCORE:-0}/10"
+            exit 0
+        fi
+    fi
+fi
+
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
     echo "ERROR: Don't run this as root"
@@ -39,6 +52,10 @@ echo
 # 2. Find all network interfaces
 echo "2. Network Interfaces:"
 while read -r interface; do
+        # Initialize variables for each interface
+        pci_slot="unknown"
+        vendor_device="unknown"
+        driver="unknown"
     if [[ "$interface" != "lo" ]]; then
         echo "   Interface: $interface"
         
@@ -128,6 +145,10 @@ echo
 echo "4. Alternative Network Interfaces:"
 alt_count=0
 while read -r interface; do
+        # Initialize variables for each interface
+        pci_slot="unknown"
+        vendor_device="unknown"
+        driver="unknown"
     if [[ "$interface" != "lo" && "$interface" != "${PRIMARY_INTERFACE:-}" && -d "/sys/class/net/$interface/device" ]]; then
         echo "   Alternative: $interface"
         alt_count=$((alt_count + 1))

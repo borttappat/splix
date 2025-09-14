@@ -53,7 +53,6 @@ generate_machine_configs() {
     
     source "$PROJECT_DIR/hardware-results.env"
     
-    # Derive machine info
     local vendor=$(hostnamectl | grep -i "Hardware Vendor" | awk -F': ' '{print $2}' | xargs)
     local model=$(hostnamectl | grep -i "Hardware Model" | awk -F': ' '{print $2}' | xargs)
     local model_lower=$(echo "$model" | tr '[:upper:]' '[:lower:]')
@@ -61,7 +60,7 @@ generate_machine_configs() {
     if echo "$model_lower" | grep -q "zenbook"; then
         MACHINE_NAME="zenbook"
     elif echo "$model_lower" | grep -q "zephyrus"; then
-        MACHINE_NAME="zephyrus"
+        MACHINE_NAME="zephyrus" 
     elif echo "$model_lower" | grep -q "razer"; then
         MACHINE_NAME="razer"
     elif echo "$vendor" | grep -qi "schenker"; then
@@ -74,21 +73,15 @@ generate_machine_configs() {
     
     log "Machine: $MACHINE_NAME"
     
-    # Create output directory structure
-    mkdir -p "$GENERATED_DIR"/{modules,configs,scripts}
+    mkdir -p "$GENERATED_DIR"/{modules,scripts}
     
-    # Generate machine-specific passthrough config
-    sed "s|{{DEVICE_ID}}|$PRIMARY_ID|g; \
-         s|{{PRIMARY_DRIVER}}|$PRIMARY_DRIVER|g; \
-         s|{{PROJECT_DIR}}|$PROJECT_DIR|g; \
-         s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
+    sed "s|{{DEVICE_ID}}|$PRIMARY_ID|g; s|{{PRIMARY_DRIVER}}|$PRIMARY_DRIVER|g; s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
         "$TEMPLATES_DIR/machine-passthrough.nix.template" > \
         "$GENERATED_DIR/modules/${MACHINE_NAME}-passthrough.nix"
     
-    # Generate specialisation block
     sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
         "$TEMPLATES_DIR/specialisation-block.template" > \
-        "$GENERATED_DIR/configs/${MACHINE_NAME}-specialisation-block.txt"
+        "$GENERATED_DIR/modules/${MACHINE_NAME}.nix"
     
     log "Generated machine configs for $MACHINE_NAME"
 }
@@ -98,7 +91,6 @@ generate_deployment_scripts() {
     
     source "$PROJECT_DIR/hardware-results.env"
     
-    # Production deployment script using exact proven logic with directory creation
     cat > "$GENERATED_DIR/scripts/deploy-router-vm.sh" << 'DEPLOYEOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -120,17 +112,14 @@ log "ERROR: Router VM image not found."
 exit 1
 fi
 
-# Clean up existing VM
 if sudo virsh --connect qemu:///system list --all | grep -q "$VM_NAME"; then
 log "Removing existing router VM..."
 sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
 sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
 fi
 
-# Ensure images directory exists
 sudo mkdir -p /var/lib/libvirt/images
 
-# Copy VM image
 sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
 if id "libvirt-qemu" >/dev/null 2>&1; then
 sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
@@ -138,7 +127,6 @@ else
 sudo chmod 644 "$TARGET_IMAGE"
 fi
 
-# Create router VM with WiFi passthrough and multiple bridges
 log "Creating router VM with WiFi card passthrough..."
 sudo virt-install \
 --connect qemu:///system \
@@ -161,67 +149,6 @@ log "Router VM deployed with WiFi passthrough!"
 log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
 DEPLOYEOF
 
-    # Test deployment script with directory creation
-    cat > "$GENERATED_DIR/scripts/test-router-vm.sh" << 'TESTEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-log() { echo "[$(date +%H:%M:%S)] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-log "Starting libvirtd..."
-sudo systemctl start libvirtd
-fi
-
-log "Deploying router VM for safe testing..."
-readonly VM_NAME="router-vm-test"
-readonly SOURCE_IMAGE="PROJECT_DIR_PLACEHOLDER/result/nixos.qcow2"
-readonly TARGET_IMAGE="/var/lib/libvirt/images/$VM_NAME.qcow2"
-
-if [[ ! -f "$SOURCE_IMAGE" ]]; then
-log "ERROR: Router VM image not found."
-exit 1
-fi
-
-# Clean up existing test VM
-if sudo virsh --connect qemu:///system list --all | grep -q "$VM_NAME"; then
-log "Removing existing test VM..."
-sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Copy VM image
-sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
-if id "libvirt-qemu" >/dev/null 2>&1; then
-sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
-else
-sudo chmod 644 "$TARGET_IMAGE"
-fi
-
-# Create router VM with default networking (safe for testing)
-log "Creating test router VM..."
-sudo virt-install \
---connect qemu:///system \
---name="$VM_NAME" \
---memory=2048 \
---vcpus=2 \
---disk "$TARGET_IMAGE,device=disk,bus=virtio" \
---os-variant=nixos-unstable \
---boot=hd \
---nographics \
---console pty,target_type=virtio \
---network default \
---noautoconsole \
---import
-
-log "Test VM deployed!"
-log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
-TESTEOF
-
-    # Start router VM wrapper script
     cat > "$GENERATED_DIR/scripts/start-router-vm.sh" << 'STARTEOF'
 #!/run/current-system/sw/bin/bash
 set -euo pipefail
@@ -243,374 +170,13 @@ else
 fi
 STARTEOF
 
-    # Replace placeholders with actual values
-    sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g; \
-            s|PCI_DEVICE_PLACEHOLDER|$PRIMARY_PCI|g" \
-        "$GENERATED_DIR/scripts/deploy-router-vm.sh" \
-        "$GENERATED_DIR/scripts/test-router-vm.sh"
+    sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g; s|PCI_DEVICE_PLACEHOLDER|$PRIMARY_PCI|g" \
+        "$GENERATED_DIR/scripts/deploy-router-vm.sh"
     
     chmod +x "$GENERATED_DIR/scripts/deploy-router-vm.sh"
-    chmod +x "$GENERATED_DIR/scripts/test-router-vm.sh"
     chmod +x "$GENERATED_DIR/scripts/start-router-vm.sh"
     
-    log "Generated deployment scripts with directory creation"
-}
-
-generate_vm_scripts() {
-    log "=== Step 5: Generate VM Creation Scripts ==="
-    
-    # Script to create VMs on network 1 (virbr2 - 192.168.101.0/24)
-    cat > "$GENERATED_DIR/scripts/create-vm-net1.sh" << 'VMEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <vm-name> <disk-size-gb>"
-    echo "Example: $0 kali-vm 20"
-    exit 1
-fi
-
-VM_NAME="$1"
-DISK_SIZE="$2"
-
-log() { echo "[VM-Net1] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-    log "Starting libvirtd..."
-    sudo systemctl start libvirtd
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Create VM on virbr2 network (192.168.101.0/24)
-log "Creating VM: $VM_NAME on network 192.168.101.0/24"
-sudo virt-install \
-    --connect qemu:///system \
-    --name="$VM_NAME" \
-    --memory=2048 \
-    --vcpus=2 \
-    --disk size="$DISK_SIZE",bus=virtio,format=qcow2 \
-    --network bridge=virbr2,model=virtio \
-    --graphics vnc,listen=127.0.0.1 \
-    --noautoconsole \
-    --os-variant=generic \
-    --boot cdrom,hd \
-    --cdrom /dev/null
-
-log "VM created: $VM_NAME"
-log "Network: 192.168.101.0/24 (gateway: 192.168.101.253)"
-log "Connect with VNC or: sudo virsh console $VM_NAME"
-VMEOF
-
-    # Script to create VMs on network 2 (virbr3 - 192.168.102.0/24)
-    cat > "$GENERATED_DIR/scripts/create-vm-net2.sh" << 'VMEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <vm-name> <disk-size-gb>"
-    echo "Example: $0 windows-vm 40"
-    exit 1
-fi
-
-VM_NAME="$1"
-DISK_SIZE="$2"
-
-log() { echo "[VM-Net2] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-    log "Starting libvirtd..."
-    sudo systemctl start libvirtd
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Create VM on virbr3 network (192.168.102.0/24)
-log "Creating VM: $VM_NAME on network 192.168.102.0/24"
-sudo virt-install \
-    --connect qemu:///system \
-    --name="$VM_NAME" \
-    --memory=4096 \
-    --vcpus=4 \
-    --disk size="$DISK_SIZE",bus=virtio,format=qcow2 \
-    --network bridge=virbr3,model=virtio \
-    --graphics vnc,listen=127.0.0.1 \
-    --noautoconsole \
-    --os-variant=generic \
-    --boot cdrom,hd \
-    --cdrom /dev/null
-
-log "VM created: $VM_NAME"
-log "Network: 192.168.102.0/24 (gateway: 192.168.102.253)"
-log "Connect with VNC or: sudo virsh console $VM_NAME"
-VMEOF
-
-    chmod +x "$GENERATED_DIR/scripts/create-vm-net1.sh"
-    chmod +x "$GENERATED_DIR/scripts/create-vm-net2.sh"
-    
-    log "Generated VM creation scripts"
-}
-
-generate_deployment_scripts() {
-    log "=== Step 4: Generate Deployment Scripts ==="
-    
-    source "$PROJECT_DIR/hardware-results.env"
-    
-    # Production deployment script using exact proven logic with directory creation
-    cat > "$GENERATED_DIR/scripts/deploy-router-vm.sh" << 'DEPLOYEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-log() { echo "[$(date +%H:%M:%S)] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-log "Starting libvirtd..."
-sudo systemctl start libvirtd
-fi
-
-log "Deploying router VM with WiFi passthrough..."
-readonly VM_NAME="router-vm-passthrough"
-readonly SOURCE_IMAGE="PROJECT_DIR_PLACEHOLDER/result/nixos.qcow2"
-readonly TARGET_IMAGE="/var/lib/libvirt/images/$VM_NAME.qcow2"
-
-if [[ ! -f "$SOURCE_IMAGE" ]]; then
-log "ERROR: Router VM image not found."
-exit 1
-fi
-
-# Clean up existing VM
-if sudo virsh --connect qemu:///system list --all | grep -q "$VM_NAME"; then
-log "Removing existing router VM..."
-sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Copy VM image
-sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
-if id "libvirt-qemu" >/dev/null 2>&1; then
-sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
-else
-sudo chmod 644 "$TARGET_IMAGE"
-fi
-
-# Create router VM with WiFi passthrough and multiple bridges
-log "Creating router VM with WiFi card passthrough..."
-sudo virt-install \
---connect qemu:///system \
---name="$VM_NAME" \
---memory=2048 \
---vcpus=2 \
---disk "$TARGET_IMAGE,device=disk,bus=virtio" \
---os-variant=nixos-unstable \
---boot=hd \
---nographics \
---console pty,target_type=virtio \
---network bridge=virbr1,model=virtio \
---network bridge=virbr2,model=virtio \
---network bridge=virbr3,model=virtio \
---hostdev PCI_DEVICE_PLACEHOLDER \
---noautoconsole \
---import
-
-log "Router VM deployed with WiFi passthrough!"
-log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
-DEPLOYEOF
-
-    # Test deployment script with directory creation
-    cat > "$GENERATED_DIR/scripts/test-router-vm.sh" << 'TESTEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-log() { echo "[$(date +%H:%M:%S)] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-log "Starting libvirtd..."
-sudo systemctl start libvirtd
-fi
-
-log "Deploying router VM for safe testing..."
-readonly VM_NAME="router-vm-test"
-readonly SOURCE_IMAGE="PROJECT_DIR_PLACEHOLDER/result/nixos.qcow2"
-readonly TARGET_IMAGE="/var/lib/libvirt/images/$VM_NAME.qcow2"
-
-if [[ ! -f "$SOURCE_IMAGE" ]]; then
-log "ERROR: Router VM image not found."
-exit 1
-fi
-
-# Clean up existing test VM
-if sudo virsh --connect qemu:///system list --all | grep -q "$VM_NAME"; then
-log "Removing existing test VM..."
-sudo virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-sudo virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Copy VM image
-sudo cp "$SOURCE_IMAGE" "$TARGET_IMAGE"
-if id "libvirt-qemu" >/dev/null 2>&1; then
-sudo chown libvirt-qemu:kvm "$TARGET_IMAGE"
-else
-sudo chmod 644 "$TARGET_IMAGE"
-fi
-
-# Create router VM with default networking (safe for testing)
-log "Creating test router VM..."
-sudo virt-install \
---connect qemu:///system \
---name="$VM_NAME" \
---memory=2048 \
---vcpus=2 \
---disk "$TARGET_IMAGE,device=disk,bus=virtio" \
---os-variant=nixos-unstable \
---boot=hd \
---nographics \
---console pty,target_type=virtio \
---network default \
---noautoconsole \
---import
-
-log "Test VM deployed!"
-log "Connect with: sudo virsh --connect qemu:///system console $VM_NAME"
-TESTEOF
-
-    # Start router VM wrapper script
-    cat > "$GENERATED_DIR/scripts/start-router-vm.sh" << 'STARTEOF'
-#!/run/current-system/sw/bin/bash
-set -euo pipefail
-
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-log() { echo "[Router VM] $*"; }
-
-log "Starting router VM with WiFi passthrough..."
-"$SCRIPT_DIR/deploy-router-vm.sh"
-
-if sudo virsh --connect qemu:///system list | grep -q "router-vm.*running"; then
-    vm_name=$(sudo virsh --connect qemu:///system list | grep "router-vm.*running" | awk '{print $2}' | head -1)
-    log "Router VM started: $vm_name"
-    log "Connect with: sudo virsh --connect qemu:///system console $vm_name"
-else
-    log "VM failed to start"
-    exit 1
-fi
-STARTEOF
-
-    # Replace placeholders with actual values
-    sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g; \
-            s|PCI_DEVICE_PLACEHOLDER|$PRIMARY_PCI|g" \
-        "$GENERATED_DIR/scripts/deploy-router-vm.sh" \
-        "$GENERATED_DIR/scripts/test-router-vm.sh"
-    
-    chmod +x "$GENERATED_DIR/scripts/deploy-router-vm.sh"
-    chmod +x "$GENERATED_DIR/scripts/test-router-vm.sh"
-    chmod +x "$GENERATED_DIR/scripts/start-router-vm.sh"
-    
-    log "Generated deployment scripts with directory creation"
-}
-
-generate_vm_scripts() {
-    log "=== Step 5: Generate VM Creation Scripts ==="
-    
-    # Script to create VMs on network 1 (virbr2 - 192.168.101.0/24)
-    cat > "$GENERATED_DIR/scripts/create-vm-net1.sh" << 'VMEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <vm-name> <disk-size-gb>"
-    echo "Example: $0 kali-vm 20"
-    exit 1
-fi
-
-VM_NAME="$1"
-DISK_SIZE="$2"
-
-log() { echo "[VM-Net1] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-    log "Starting libvirtd..."
-    sudo systemctl start libvirtd
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Create VM on virbr2 network (192.168.101.0/24)
-log "Creating VM: $VM_NAME on network 192.168.101.0/24"
-sudo virt-install \
-    --connect qemu:///system \
-    --name="$VM_NAME" \
-    --memory=2048 \
-    --vcpus=2 \
-    --disk size="$DISK_SIZE",bus=virtio,format=qcow2 \
-    --network bridge=virbr2,model=virtio \
-    --graphics vnc,listen=127.0.0.1 \
-    --noautoconsole \
-    --os-variant=generic \
-    --boot cdrom,hd \
-    --cdrom /dev/null
-
-log "VM created: $VM_NAME"
-log "Network: 192.168.101.0/24 (gateway: 192.168.101.253)"
-log "Connect with VNC or: sudo virsh console $VM_NAME"
-VMEOF
-
-    # Script to create VMs on network 2 (virbr3 - 192.168.102.0/24)
-    cat > "$GENERATED_DIR/scripts/create-vm-net2.sh" << 'VMEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <vm-name> <disk-size-gb>"
-    echo "Example: $0 windows-vm 40"
-    exit 1
-fi
-
-VM_NAME="$1"
-DISK_SIZE="$2"
-
-log() { echo "[VM-Net2] $*"; }
-
-if ! sudo systemctl is-active --quiet libvirtd; then
-    log "Starting libvirtd..."
-    sudo systemctl start libvirtd
-fi
-
-# Ensure images directory exists
-sudo mkdir -p /var/lib/libvirt/images
-
-# Create VM on virbr3 network (192.168.102.0/24)
-log "Creating VM: $VM_NAME on network 192.168.102.0/24"
-sudo virt-install \
-    --connect qemu:///system \
-    --name="$VM_NAME" \
-    --memory=4096 \
-    --vcpus=4 \
-    --disk size="$DISK_SIZE",bus=virtio,format=qcow2 \
-    --network bridge=virbr3,model=virtio \
-    --graphics vnc,listen=127.0.0.1 \
-    --noautoconsole \
-    --os-variant=generic \
-    --boot cdrom,hd \
-    --cdrom /dev/null
-
-log "VM created: $VM_NAME"
-log "Network: 192.168.102.0/24 (gateway: 192.168.102.253)"
-log "Connect with VNC or: sudo virsh console $VM_NAME"
-VMEOF
-
-    chmod +x "$GENERATED_DIR/scripts/create-vm-net1.sh"
-    chmod +x "$GENERATED_DIR/scripts/create-vm-net2.sh"
-    
-    log "Generated VM creation scripts"
+    log "Generated deployment scripts"
 }
 
 create_summary_readme() {
@@ -628,16 +194,11 @@ create_summary_readme() {
 
 ### Modules
 - \`modules/${MACHINE_NAME}-passthrough.nix\` - VFIO passthrough configuration
+- \`modules/${MACHINE_NAME}.nix\` - Complete machine configuration with router specialisation
 
-### Configuration Blocks  
-- \`configs/${MACHINE_NAME}-specialisation-block.txt\` - Router specialisation block
-
-### Scripts (using proven working logic)
+### Scripts
 - \`scripts/deploy-router-vm.sh\` - Production deployment with $PRIMARY_PCI passthrough
-- \`scripts/test-router-vm.sh\` - Safe testing deployment
 - \`scripts/start-router-vm.sh\` - Router VM startup wrapper
-- \`scripts/create-vm-net1.sh\` - Create VMs on 192.168.101.0/24 network
-- \`scripts/create-vm-net2.sh\` - Create VMs on 192.168.102.0/24 network
 
 ## Network Layout
 
@@ -669,12 +230,10 @@ main() {
     build_router_vm
     generate_machine_configs
     generate_deployment_scripts
-    generate_vm_scripts
     create_summary_readme
     
     log "=== Generation Complete ==="
     log "All files in: $GENERATED_DIR"
-    log "Includes directory creation for libvirt images"
     log ""
     log "Remember to 'git add' generated files before building with nixbuild"
 }
