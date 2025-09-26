@@ -92,7 +92,7 @@ generate_deployment_scripts() {
     source "$PROJECT_DIR/hardware-results.env"
     
     cat > "$GENERATED_DIR/scripts/deploy-router-vm.sh" << 'DEPLOYEOF'
-#!/usr/bin/env bash
+/run/current-system/sw/bin/bash
 set -euo pipefail
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
