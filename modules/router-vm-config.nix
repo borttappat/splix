@@ -46,11 +46,25 @@
         prefixLength = 24;
       }];
     };
+
+    interfaces.enp4s0 = {
+      ipv4.addresses = [{
+        address = "192.168.103.253";
+        prefixLength = 24;
+      }];
+    };
+
+    interfaces.enp5s0 = {
+      ipv4.addresses = [{
+        address = "192.168.104.253";
+        prefixLength = 24;
+      }];
+    };
     
     nat = {
       enable = true;
-      externalInterface = "wlp7s0";
-      internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" ];
+      externalInterface = "wlp9s0";
+      internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" "enp4s0" "enp5s0" ];
     };
     
     firewall = {
@@ -58,15 +72,21 @@
       allowedTCPPorts = [ 22 53 ];
       allowedUDPPorts = [ 53 67 68 ];
       extraCommands = ''
-        iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o wlp7s0 -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o wlp7s0 -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o wlp7s0 -j MASQUERADE
-        iptables -A FORWARD -i enp1s0 -o wlp7s0 -j ACCEPT
-        iptables -A FORWARD -i enp2s0 -o wlp7s0 -j ACCEPT
-        iptables -A FORWARD -i enp3s0 -o wlp7s0 -j ACCEPT
-        iptables -A FORWARD -i wlp7s0 -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i wlp7s0 -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i wlp7s0 -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o wlp9s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o wlp9s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o wlp9s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o wlp9s0 -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o wlp9s0 -j MASQUERADE
+        iptables -A FORWARD -i enp1s0 -o wlp9s0 -j ACCEPT
+        iptables -A FORWARD -i enp2s0 -o wlp9s0 -j ACCEPT
+        iptables -A FORWARD -i enp3s0 -o wlp9s0 -j ACCEPT
+        iptables -A FORWARD -i enp4s0 -o wlp9s0 -j ACCEPT
+        iptables -A FORWARD -i enp5s0 -o wlp9s0 -j ACCEPT
+        iptables -A FORWARD -i wlp9s0 -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp9s0 -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp9s0 -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp9s0 -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i wlp9s0 -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
       '';
     };
   };
@@ -90,20 +110,25 @@
   services.qemuGuest.enable = true;
   services.spice-vdagentd.enable = true;
 
-# Replace the dnsmasq line in your router-vm-config.nix with this full block:
 services.dnsmasq = {
   enable = true;
   settings = {
-    interface = ["enp2s0" "enp3s0"];
+    interface = ["enp2s0" "enp3s0" "enp4s0" "enp5s0"];
     dhcp-range = [
       "enp2s0,192.168.101.10,192.168.101.100,24h"
       "enp3s0,192.168.102.10,192.168.102.100,24h"
+      "enp4s0,192.168.103.10,192.168.103.100,24h"
+      "enp5s0,192.168.104.10,192.168.104.100,24h"
     ];
     dhcp-option = [
       "enp2s0,option:router,192.168.101.253"
       "enp2s0,option:dns-server,192.168.101.253"
       "enp3s0,option:router,192.168.102.253"
       "enp3s0,option:dns-server,192.168.102.253"
+      "enp4s0,option:router,192.168.103.253"
+      "enp4s0,option:dns-server,192.168.103.253"
+      "enp5s0,option:router,192.168.104.253"
+      "enp5s0,option:dns-server,192.168.104.253"
     ];
     server = ["8.8.8.8" "1.1.1.1"];
     bind-interfaces = true;

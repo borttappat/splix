@@ -33,8 +33,8 @@ log "Deploying router VM with updated configuration..."
 ./generated/scripts/deploy-router-vm.sh
 
 log "=== Setup libvirt networks ==="
-if [[ -f "scripts/setup-libvirt-networks.sh" ]]; then
-    ./scripts/setup-libvirt-networks.sh
+if [[ -f "scripts/setup-networks-post-deploy.sh" ]]; then
+    ./scripts/setup-networks-post-deploy.sh
 else
     log "Network setup script not found, skipping..."
 fi

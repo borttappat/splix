@@ -7,13 +7,13 @@ log "=== Post-Deployment Network Setup ==="
 
 # Ensure router VM is running
 if ! sudo virsh list | grep -q "router-vm-passthrough.*running"; then
-log "ERROR: Router VM not running. Run deploy-router.sh first."
+log "ERROR: Router VM not running. Start it first."
 exit 1
 fi
 
 log "Setting up libvirt guest networks..."
 
-# Router network 1 (pentesting/work) - bridge mode, no DHCP
+# Define all networks
 bash -c 'cat > /tmp/router-net1.xml << XMLEOF
 <network>
 <name>router-net1</name>
@@ -22,7 +22,6 @@ bash -c 'cat > /tmp/router-net1.xml << XMLEOF
 </network>
 XMLEOF'
 
-# Router network 2 (gaming/leisure) - bridge mode, no DHCP  
 bash -c 'cat > /tmp/router-net2.xml << XMLEOF
 <network>
 <name>router-net2</name>
@@ -31,47 +30,35 @@ bash -c 'cat > /tmp/router-net2.xml << XMLEOF
 </network>
 XMLEOF'
 
-# Clean up existing networks
-for net in router-net1 router-net2; do
+bash -c 'cat > /tmp/router-net3.xml << XMLEOF
+<network>
+<name>router-net3</name>
+<bridge name="virbr4"/>
+<forward mode="bridge"/>
+</network>
+XMLEOF'
+
+bash -c 'cat > /tmp/router-net4.xml << XMLEOF
+<network>
+<name>router-net4</name>
+<bridge name="virbr5"/>
+<forward mode="bridge"/>
+</network>
+XMLEOF'
+
+# Create/update all networks
+for net in router-net1 router-net2 router-net3 router-net4; do
 if sudo virsh net-list --all | grep -q "$net"; then
-log "Cleaning up existing $net..."
+log "Network $net already exists, updating..."
 sudo virsh net-destroy "$net" 2>/dev/null || true
 sudo virsh net-undefine "$net" 2>/dev/null || true
 fi
-done
 
-# Create networks
-for net in router-net1 router-net2; do
 log "Creating network: $net"
 sudo virsh net-define "/tmp/${net}.xml"
 sudo virsh net-start "$net"
 sudo virsh net-autostart "$net"
 done
-
-# Verify network setup
-log "Verifying network configuration..."
-
-# Check bridges exist with correct IPs
-for bridge in virbr1 virbr2 virbr3; do
-if ip addr show "$bridge" >/dev/null 2>&1; then
-ip=$(ip addr show "$bridge" | grep "inet " | awk '{print $2}' || echo "no-ip")
-log "✓ $bridge: $ip"
-else
-log "✗ $bridge: missing"
-fi
-done
-
-# Check libvirt networks
-log "Libvirt networks:"
-sudo virsh net-list --all
-
-# Test router VM dnsmasq
-log "Testing router VM DHCP service..."
-if sudo virsh console router-vm-passthrough --force --safe >/dev/null 2>&1 <<< "sudo ss -ulnp | grep :67 && exit"; then
-log "✓ Router VM DHCP service running"
-else
-log "⚠ Could not verify router VM DHCP"
-fi
 
 # Clean up temp files
 rm -f /tmp/router-net*.xml
@@ -79,8 +66,7 @@ rm -f /tmp/router-net*.xml
 log "=== Network Setup Complete ==="
 log ""
 log "Available networks for VMs:"
-log "  router-net1 (virbr2) → 192.168.101.x → pentesting/work"
-log "  router-net2 (virbr3) → 192.168.102.x → gaming/leisure"
-log "  default (virbr0) → 192.168.122.x → direct host"
-log ""
-log "Test with: sudo virt-install --network network=router-net1 ..."
+log "  router-net1 (virbr2) → 192.168.101.x"
+log "  router-net2 (virbr3) → 192.168.102.x"
+log "  router-net3 (virbr4) → 192.168.103.x (isolated)"
+log "  router-net4 (virbr5) → 192.168.104.x (isolated)"

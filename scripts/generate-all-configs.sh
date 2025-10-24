@@ -141,6 +141,8 @@ sudo virt-install \
 --network bridge=virbr1,model=virtio \
 --network bridge=virbr2,model=virtio \
 --network bridge=virbr3,model=virtio \
+--network bridge=virbr4,model=virtio \
+--network bridge=virbr5,model=virtio \
 --hostdev PCI_DEVICE_PLACEHOLDER \
 --noautoconsole \
 --import
