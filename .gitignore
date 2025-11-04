@@ -28,3 +28,6 @@ result
 scripts/generated-configs/
 modules/router-generated/
 *.backup
+
+# Env stuff
+router-credentials.env
