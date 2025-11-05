@@ -1,221 +1,256 @@
-# Splix - NixOS VM Router with Network Isolation
+# Splix - VM Router with Dotfiles Integration
 
-**Status**: Working on ASUS Zenbook/Zephyrus and some random Dell machine I found on the floor | **Setup**: 4 commands | **Networks**: 3 isolated segments
+**Status**: Working on Intel WiFi hardware | **Setup**: Semi-automated | **Integration**: [Dotfiles](https://github.com/borttappat/dotfiles)-based NixOS workflow
 
-A minimal NixOS VM router that provides WiFi card passthrough to create isolated guest networks. Guest VMs get internet through the router VM while remaining completely isolated from the host system.
+Splix creates a NixOS VM router that provides network isolation through VFIO WiFi passthrough. It generates configuration files that integrate with your dotfiles-managed NixOS system, allowing you to switch between normal operation and router mode via NixOS specializations.
 
-For my use-case, I integrate the generated configs, scripts and modules into my [dotfiles](https://github.com/borttappat/dotfiles), you should probably do something similar.
+## How It Works with Your Dotfiles
+
+Splix is designed to work alongside a dotfiles-managed NixOS system. Your dotfiles remain the backbone of your host OS configuration, while Splix adds router capabilities as an optional specialization.
+
+### Integration Flow
+
+```
+Your Dotfiles (Host OS) → Splix (Router Generation) → Combined System
+├── Base NixOS config        ├── Hardware detection        ├── Normal boot mode
+├── User environment         ├── VM router config          ├── Router specialization  
+└── System packages          └── Generated modules         └── Seamless switching
+```
 
 ## Network Architecture
-Zenbook used as a placeholder for whatever machine you run this on.
+
 ```
 Internet ── WiFi Card (VFIO) ── Router VM ── Guest Networks
                 │                   │            │
         [Hardware Passthrough]  [NAT + DHCP]  [Isolated VMs]
-        Zenbook: 8086:a840     192.168.10x.253   No host access
+        Auto-detected PCI      192.168.10x.253   No host access
 ```
 
 **Network Segments:**
 - `virbr1` (192.168.100.x) - Host ↔ Router communication
-- `virbr2` (192.168.101.x) - Guest network 1 (pentesting/work)  
-- `virbr3` (192.168.102.x) - Guest network 2 (gaming/leisure)
+- `virbr2` (192.168.101.x) - Guest network 1 (isolated work)  
+- `virbr3` (192.168.102.x) - Guest network 2 (isolated testing)
+- `virbr4` (192.168.103.x) - Development environment
+- `virbr5` (192.168.104.x) - Additional isolation
 
-## Quick Setup
+## Setup Process
 
-**Prerequisites**: NixOS with IOMMU enabled, compatible WiFi card
+**Prerequisites**: 
+- NixOS system managed via dotfiles
+- Intel WiFi card (tested hardware)
+- IOMMU enabled
+
+### 1. Generate Configurations
 
 ```bash
-# 1. Build router VM
-nix build .#router-vm-qcow
-
-# 2. Deploy router with WiFi passthrough  
-./scripts/rebuild-router.sh
-
-# 3. Connect to router VM and setup WiFi
-sudo virsh console router-vm-passthrough
-nmcli device wifi connect "NETWORK" password "PASSWORD"
-
-# 4. Create guest VMs on isolated networks
-sudo virt-install --name="test-vm" --network bridge=virbr2 ...
+cd ~/splix
+./scripts/generate-all-configs.sh
 ```
 
-Guest VMs automatically get DHCP (192.168.101.x or 192.168.102.x) and internet through router VM's WiFi.
+This detects your hardware and generates machine-specific files in `generated/`:
+- NixOS modules for your dotfiles
+- Deployment scripts with correct PCI addresses
+- VFIO passthrough configurations
 
-## Essential Files
+### 2. Manual Integration Step
 
-**Core Configuration:**
-- `flake.nix` - Builds router VM image
-- `modules/router-vm-config.nix` - Router VM NixOS config with network setup
-- `hardware-results.env` - Hardware-specific values (PCI address, device ID)
+**Currently required**: Copy generated files to your dotfiles:
 
-**Deployment Scripts:**
-- `scripts/rebuild-router.sh` - Build and deploy router VM
-- `scripts/setup-networks-post-deploy.sh` - Configure libvirt networks
-- `generated/scripts/deploy-router-vm.sh` - Hardware-specific VM deployment
-
-## Generated Directory Structure
-
-The `generated/` directory contains hardware-specific configurations and deployment scripts created from your machine's detected WiFi hardware:
-
-```
-generated/
-├── README.md                           # Generation summary with hardware details
-├── modules/
-│   ├── [MACHINE]-passthrough.nix       # VFIO host configuration for [MACHINE]
-│   └── [MACHINE].nix                   # NixOS-build spec for specific machines
-└── scripts/
-    ├── deploy-router-vm.sh             # Main deployment (hardware-specific PCI addresses)
-    ├── test-router-vm.sh               # Safe testing deployment  
-    ├── emergency-recovery.sh           # Network recovery (hardware-specific device IDs)
-    ├── create-vm-net1.sh               # Create VMs on 192.168.101.x network
-    ├── create-vm-net2.sh               # Create VMs on 192.168.102.x network
-    └── start-router-vm.sh              # Router startup wrapper
-```
-
-**Key Files:**
-
-**`deploy-router-vm.sh`** - Critical deployment script containing:
-- Your specific WiFi PCI address (`0000:00:14.3`)  
-- Device ID (`8086:a840`)
-- Complete virt-install command with correct hostdev passthrough
-- Directory creation and permission handling
-
-**`MACHINE-passthrough.nix`** - Host VFIO configuration with:
-- Kernel parameters for your specific device (`vfio-pci.ids=XXXX:XXXX`)
-- Bridge network definitions (virbr1, virbr2, virbr3)
-- Firewall rules for network isolation
-
-**Important**: These files contain your specific hardware addresses and should be regenerated if moving to different hardware.
-
-## Hardware Configuration
-
-**Current Setup (Zenbook):**
-- WiFi Device: XXXX:XXXX (Intel Wi-Fi 6E)
-- PCI Address: XXXX:XX:XX.X
-- Driver: iwlwifi (blacklisted on host)
-- Status: Working, 8/10 compatibility
-
-**Requirements:**
-- IOMMU support (Intel VT-d/AMD-Vi)
-- Compatible WiFi card in isolated IOMMU group
-- 8GB+ RAM (2GB for router VM)
-- NixOS 25.05+
-
-## Usage
-
-**Router VM Management:**
 ```bash
-# Deploy/redeploy router
-./scripts/rebuild-router.sh
+# Copy machine-specific module
+cp generated/modules/$(hostname).nix ~/dotfiles/modules/
 
-# Connect to router console
-sudo virsh console router-vm-passthrough
+# Copy VFIO passthrough config  
+cp generated/modules/$(hostname)-passthrough.nix ~/dotfiles/modules/router-generated/
 
-# Check router status
-sudo virsh list --all
+# Import in your dotfiles configuration.nix
+# imports = [ ./modules/$(hostname).nix ];
 ```
 
-**Guest VM Creation:**
+### 3. Switch to Router Mode
+
 ```bash
-# Work/pentesting VMs (192.168.101.x network)
-sudo virt-install --network bridge=virbr2 --name="kali-vm" ...
+# Router mode (all traffic through VM)
+sudo nixos-rebuild switch --specialisation router
 
-# Gaming/leisure VMs (192.168.102.x network)  
-sudo virt-install --network bridge=virbr3 --name="gaming-vm" ...
-
-# Direct host access (bypass router)
-sudo virt-install --network bridge=virbr0 --name="direct-vm" ...
+# Normal mode (direct network access)
+sudo nixos-rebuild switch
 ```
 
-## Security Benefits
+## What Gets Generated
 
-**Network Isolation:**
-- Guest VMs cannot access host system
-- Guest networks completely separated
-- All internet traffic routed through router VM WiFi
-- Host maintains separate internet connection for management
+### Machine-Specific Module (`~/dotfiles/modules/zenbook.nix`)
 
-**Traffic Control:**
-- Monitor all guest internet activity at router VM level
-- Block/filter traffic centrally
-- Isolated network segments prevent cross-contamination
-- Emergency host network recovery available
+Adds a `router` specialization to your NixOS config that:
+- Imports VFIO passthrough configuration
+- Sets up network routing through router VM
+- Configures auto-start services
+- Uses your actual username (not hardcoded paths)
+
+### VFIO Configuration (`~/dotfiles/modules/router-generated/zenbook-passthrough.nix`)
+
+Hardware-specific configuration with:
+- Your WiFi card's actual PCI address
+- Device IDs from hardware detection
+- Bridge network definitions
+- Kernel parameters for VFIO
+
+### Deployment Scripts (`generated/scripts/`)
+
+Ready-to-use scripts with your hardware details:
+- Router VM deployment with correct device passthrough
+- Network setup and testing utilities
+- Recovery scripts with your specific device IDs
+
+## Key Features
+
+### Hardware Detection
+- Scans for WiFi interfaces and PCI addresses
+- Generates hardware compatibility report
+- **Note**: Currently tested on Intel WiFi only
+
+### Dotfiles Integration
+- Your dotfiles remain the primary NixOS configuration
+- Splix adds router capabilities as a specialization
+- No disruption to existing system setup
+- Clean separation between base system and router features
+
+### Mode Switching
+Switch between configurations without rebooting:
+```bash
+# Work normally with direct internet
+sudo nixos-rebuild switch
+
+# Switch to isolated router mode  
+sudo nixos-rebuild switch --specialisation router
+```
+
+### Network Isolation
+- Guest VMs completely isolated from host
+- Multiple isolated network segments
+- All guest traffic routes through router VM
+- Host retains management access
+
+## Current Limitations
+
+### Hardware Support
+- **Intel WiFi only**: Tested on Intel WiFi 6/6E cards
+- **Manual verification needed**: PCI addresses and device IDs must be confirmed
+- **IOMMU required**: Hardware virtualization support needed
+
+### Setup Process
+- **Manual file copying**: Generated configs must be manually integrated into dotfiles
+- **Configuration review**: Generated modules should be reviewed before use
+- **Network setup**: Some network configuration may need manual adjustment
+
+### Management
+- **Console-based**: Router VM managed via virsh console
+- **WiFi setup**: Manual WiFi configuration in router VM required
+- **No GUI**: Text-based configuration and monitoring
 
 ## File Structure
 
 ```
 splix/
-├── flake.nix                           # VM builder
-├── modules/router-vm-config.nix        # Router configuration  
 ├── scripts/
-│   ├── rebuild-router.sh               # Main deployment script
-│   └── setup-networks-post-deploy.sh  # Network setup
-├── generated/scripts/
-│   └── deploy-router-vm.sh             # Hardware-specific deployment
-└── hardware-results.env               # Hardware configuration
+│   ├── generate-all-configs.sh    # Main generation script
+│   └── hardware-identify.sh       # Hardware detection
+├── modules/
+│   └── router-vm-config.nix       # Router VM base configuration
+├── templates/                     # Configuration templates with variables
+├── generated/                     # Generated configurations (hardware-specific)
+│   ├── modules/                   # For integration with dotfiles
+│   └── scripts/                   # Deployment and management
+└── hardware-results.env          # Detected hardware parameters
 ```
 
-**Not Tracked:** VM images (`result/`), libvirt disk images, build artifacts
+## Integration with Dotfiles
 
-## Limitations
+### Your Dotfiles Structure
+```
+~/dotfiles/
+├── flake.nix                      # Main flake with system configurations
+├── modules/
+│   ├── configuration.nix          # Core system configuration
+│   ├── zenbook.nix                # Generated by Splix (router specialization)
+│   ├── zephyrus.nix               # Generated by Splix (another machine)
+│   └── router-generated/
+│       ├── zenbook-passthrough.nix  # Generated by Splix (VFIO config)
+│       └── host-passthrough.nix     # Generated by Splix (generic config)
+└── ...
+```
 
-**Hardware Specific:**
-- Currently configured for one Zenbook machine
-- Requires manual configuration for different hardware
-- Device IDs hardcoded in deployment scripts
+### How It Works Together
 
-**Network Features:**
-- No VPN server integration
-- No advanced traffic shaping
-- Basic iptables firewalling only
+1. **Base System**: Your dotfiles define the core NixOS configuration
+2. **Router Module**: Splix generates a machine-specific module that adds router capabilities
+3. **Specialization**: The router functionality is available as a NixOS specialization
+4. **Clean Separation**: Router features don't interfere with your normal system operation
 
-**Management:**
-- No web interface
-- Console-based router VM management
-- Manual WiFi configuration required
+## Usage Examples
+
+### Daily Workflow
+```bash
+# Normal work (direct internet)
+sudo nixos-rebuild switch
+
+# Switch to isolated environment for testing
+sudo nixos-rebuild switch --specialisation router
+
+# Create isolated VMs
+sudo virt-install --network bridge=virbr2 --name="test-vm" ...
+```
+
+### Router VM Management
+```bash
+# Check router status
+sudo virsh list --all
+
+# Connect to router console for WiFi setup
+sudo virsh console router-vm
+
+# Inside router VM
+nmcli device wifi connect "NETWORK" password "PASSWORD"
+```
 
 ## Troubleshooting
 
-**Router VM won't start:**
+### Generation Issues
 ```bash
-# Check VFIO binding
+# Check hardware detection
+./scripts/hardware-identify.sh
+cat hardware-results.env
+
+# Verify compatibility score (should be ≥6)
+```
+
+### Router VM Issues
+```bash
+# Verify VFIO binding
 lspci -nnk | grep -A3 "Network controller"
 # Should show: Kernel driver in use: vfio-pci
 
-# Check libvirtd
-sudo systemctl status libvirtd
+# Check VM deployment
+sudo systemctl status router-vm-autostart
+journalctl -u router-vm-autostart
 ```
 
-**No internet in guest VMs:**
+### Network Issues
 ```bash
-# Verify router VM WiFi
-sudo virsh console router-vm-passthrough
-ip addr show wlp7s0  # Should have IP
+# Test router connectivity
+ping 192.168.100.253  # Router management IP
+
+# Check guest VM internet
+# (from inside guest VM)
 ping 8.8.8.8
-
-# Check DHCP service
-sudo ss -ulnp | grep :67  # Should show dnsmasq
 ```
 
-**Host lost internet:**
-```bash
-# Router VM should provide host internet via management bridge
-ping 192.168.100.253  # Router VM management IP
-```
+## Future Improvements
 
-## Performance
+- **Broader hardware support**: AMD and other WiFi chipsets
+- **Automated integration**: Direct dotfiles integration without manual copying
+- **Enhanced automation**: One-command setup from detection to deployment
+- **Monorepo approach**: Fully integrate into 
+## Contributing
 
-**Typical Resource Usage:**
-- CPU: 5-10% overhead from VM routing
-- Memory: 2GB dedicated to router VM
-- Network: <5% latency increase  
-- Storage: ~2GB for router VM image
-
-**Tested Performance:**
-- Guest VM internet speeds: 90%+ of native WiFi speed
-- Host internet through router: No noticeable impact
-- Multiple guest VMs: Scales well up to memory limits
-
-## License
-
-MIT License - Use at your own risk. Hardware passthrough can potentially cause system instability.
+When adding features, maintain the dotfiles integration pattern and ensure generated configurations remain compatible with existing NixOS dotfiles workflows.
