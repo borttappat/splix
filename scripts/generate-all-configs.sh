@@ -316,8 +316,11 @@ generate_machine_configs() {
         "$TEMPLATES_DIR/machine-passthrough.nix.template" > \
         "$GENERATED_DIR/modules/${MACHINE_NAME}-passthrough.nix"
     
-    # Generate machine spec config
-    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
+    # Generate machine spec config with username substitution
+    CURRENT_USER="${USER:-$(whoami)}"
+    log "User: $CURRENT_USER"
+    
+    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g" \
         "$TEMPLATES_DIR/specialisation-block.template" > \
         "$GENERATED_DIR/modules/${MACHINE_NAME}.nix"
     

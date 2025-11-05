@@ -2,6 +2,59 @@
 
 let
   inherit (pkgs.lib) mkForce;
+  
+  # Detection script that determines if we should be in router mode
+  detectionScript = pkgs.writeShellScript "detect-router-mode" ''
+    # Check if VFIO PCI module is loaded (indicates router mode hardware setup)
+    if lsmod | grep -q "vfio_pci"; then
+      echo "router"
+      exit 0
+    fi
+    
+    # Check if router bridges exist (indicates router mode network setup)
+    if [[ -d /sys/class/net/virbr1 ]] && ip link show virbr1 >/dev/null 2>&1; then
+      echo "router"
+      exit 0
+    fi
+    
+    # Check current NixOS generation label
+    current_label=$(nixos-version | grep -o '[a-zA-Z-]*setup' || echo "base-setup")
+    if [[ "$current_label" == "router-setup" ]]; then
+      echo "router"
+      exit 0
+    fi
+    
+    # Default to base mode
+    echo "base"
+  '';
+
+  # Service to maintain router mode state
+  maintainRouterModeScript = pkgs.writeShellScript "maintain-router-mode" ''
+    current_mode=$(${detectionScript})
+    
+    if [[ "$current_mode" == "router" ]]; then
+      echo "Detected router mode - ensuring router configuration is maintained"
+      
+      # Ensure virbr1 bridge exists and is configured
+      if ! ip link show virbr1 >/dev/null 2>&1; then
+        echo "Creating virbr1 bridge..."
+        ip link add virbr1 type bridge
+        ip addr add 192.168.100.1/24 dev virbr1
+        ip link set virbr1 up
+      fi
+      
+      # Ensure VFIO modules are loaded if hardware supports it
+      if ! lsmod | grep -q "vfio_pci"; then
+        echo "Loading VFIO modules for router mode..."
+        modprobe vfio_pci 2>/dev/null || true
+      fi
+      
+      echo "Router mode maintenance complete"
+    else
+      echo "Base mode detected - no router maintenance needed"
+    fi
+  '';
+
 in
 {
 
@@ -11,6 +64,50 @@ in
 
 # System labels for identification
 system.nixos.label = "base-setup";
+
+# Auto-mode detection and maintenance services
+systemd.services.splix-mode-detection = {
+  description = "Splix Router/Base Mode Detection and Maintenance";
+  after = [ "network.target" "libvirtd.service" ];
+  wants = [ "network.target" ];
+  wantedBy = [ "multi-user.target" ];
+  
+  serviceConfig = {
+    Type = "oneshot";
+    RemainAfterExit = true;
+    ExecStart = maintainRouterModeScript;
+    User = "root";
+  };
+  
+  # Run after any system reconfiguration
+  unitConfig = {
+    ConditionPathExists = "!/run/current-system/splix-mode-maintained";
+  };
+};
+
+# Post-rebuild maintenance service
+systemd.services.splix-post-rebuild-maintenance = {
+  description = "Splix Post-Rebuild Mode Maintenance";
+  serviceConfig = {
+    Type = "oneshot";
+    ExecStart = pkgs.writeShellScript "post-rebuild-maintain" ''
+      ${maintainRouterModeScript}
+      # Create marker to prevent boot service from running unnecessarily
+      touch /run/current-system/splix-mode-maintained
+    '';
+    User = "root";
+  };
+};
+
+# Make detection script available system-wide
+environment.systemPackages = [
+  (pkgs.writeShellScriptBin "splix-detect-mode" ''
+    ${detectionScript}
+  '')
+  (pkgs.writeShellScriptBin "splix-maintain-mode" ''
+    ${maintainRouterModeScript}
+  '')
+];
 
 # Router specialisation
 specialisation.router.configuration = {
