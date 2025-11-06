@@ -199,6 +199,6 @@ services.dnsmasq = {
     isNormalUser = true;
     password = "__ROUTER_PASSWORD__";
     extraGroups = [ "wheel" "networkmanager" ];
-    __SSH_KEYS_CONFIG__
+    __SSH_KEYS__
   };
 }
