@@ -94,7 +94,7 @@ build_router_vm() {
     WIFI_INTERFACE="wlp9s0"
     
     # Template the router VM config
-    local router_config="$PROJECT_DIR/modules/router-vm-config.nix"
+    local router_config="$GENERATED_DIR/modules/router-vm-config.nix"
     
     # Create router config from template with all substitutions
     cat > "$router_config" << 'ROUTEREOF'

@@ -100,11 +100,11 @@ systemd.services.splix-post-rebuild-maintenance = {
 };
 
 # Make detection script available system-wide
-environment.systemPackages = [
-  (pkgs.writeShellScriptBin "splix-detect-mode" ''
+environment.systemPackages = with pkgs; lib.mkAfter [
+  (writeShellScriptBin "splix-detect-mode" ''
     ${detectionScript}
   '')
-  (pkgs.writeShellScriptBin "splix-maintain-mode" ''
+  (writeShellScriptBin "splix-maintain-mode" ''
     ${maintainRouterModeScript}
   '')
 ];
