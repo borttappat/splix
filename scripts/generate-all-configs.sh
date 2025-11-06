@@ -96,6 +96,9 @@ build_router_vm() {
     # Template the router VM config
     local router_config="$GENERATED_DIR/modules/router-vm-config.nix"
     
+    # Ensure directory exists
+    mkdir -p "$(dirname "$router_config")"
+    
     # Create router config from template with all substitutions
     cat > "$router_config" << 'ROUTEREOF'
 { config, lib, pkgs, modulesPath, ... }:
