@@ -190,7 +190,7 @@ services.dnsmasq = {
 
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = {{SSH_PASSWORD_AUTH}};
+    settings.PasswordAuthentication = __SSH_PASSWORD_AUTH__;
   };
 
   services.getty.autologinUser = "{{ROUTER_USER}}";
