@@ -91,7 +91,7 @@ build_router_vm() {
     # WiFi interface will be dynamically detected by the router VM service
     
     # Template the router VM config
-    local router_config="$GENERATED_DIR/modules/router-vm-config.nix"
+    local router_config="$GENERATED_DIR/temp/router-vm-config.nix"
     
     # Ensure directory exists
     mkdir -p "$(dirname "$router_config")"
