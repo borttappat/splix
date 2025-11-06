@@ -26,6 +26,7 @@
     networkmanager.enable = true;
     wireless.enable = false;
     
+    # Management bridge interface
     interfaces.enp1s0 = {
       ipv4.addresses = [{
         address = "192.168.100.253";
@@ -33,6 +34,7 @@
       }];
     };
     
+    # Guest network interfaces
     interfaces.enp2s0 = {
       ipv4.addresses = [{
         address = "192.168.101.253";
@@ -91,48 +93,23 @@
       fi
       echo "Found WiFi interface: $WIFI_IFACE"
       
-      # Clear existing NAT rules
       ${pkgs.iptables}/bin/iptables -t nat -F POSTROUTING
-      ${pkgs.iptables}/bin/iptables -F FORWARD
-      
-      # NAT rules for all networks to WiFi
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       
-      # SMART BRIDGES (virbr1, virbr2, virbr3) - Full connectivity
-      # Host management network
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp1s0 -o "$WIFI_IFACE" -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      
-      # Smart guest networks - allow inter-VM communication + internet
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o "$WIFI_IFACE" -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o enp3s0 -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o enp2s0 -j ACCEPT
-      
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o "$WIFI_IFACE" -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      
-      # DUMB BRIDGES (virbr4, virbr5) - Internet-only, no inter-VM communication
-      # Internet access only - no communication between VMs or with smart networks
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o "$WIFI_IFACE" -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o enp2s0 -j DROP
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o enp3s0 -j DROP
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o enp5s0 -j DROP
-      
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
       ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o enp2s0 -j DROP
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o enp3s0 -j DROP
-      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o enp4s0 -j DROP
-      
-      echo "Network configuration complete:"
-      echo "  SMART: virbr1 (host), virbr2-3 (guest networks with inter-VM communication)"
-      echo "  DUMB:  virbr4-5 (isolated guest networks, internet-only)"
     '';
   };
 
@@ -155,50 +132,44 @@
   services.qemuGuest.enable = true;
   services.spice-vdagentd.enable = true;
 
-services.dnsmasq = {
-  enable = true;
-  settings = {
-    # Serve DHCP on all guest networks
-    interface = ["enp2s0" "enp3s0" "enp4s0" "enp5s0"];
-    dhcp-range = [
-      # SMART networks - normal DHCP ranges
-      "enp2s0,192.168.101.10,192.168.101.100,24h"
-      "enp3s0,192.168.102.10,192.168.102.100,24h"
-      # DUMB networks - isolated DHCP ranges  
-      "enp4s0,192.168.103.10,192.168.103.100,24h"
-      "enp5s0,192.168.104.10,192.168.104.100,24h"
-    ];
-    dhcp-option = [
-      # SMART networks - standard options
-      "enp2s0,option:router,192.168.101.253"
-      "enp2s0,option:dns-server,192.168.101.253"
-      "enp3s0,option:router,192.168.102.253"
-      "enp3s0,option:dns-server,192.168.102.253"
-      # DUMB networks - same router/DNS but firewalled
-      "enp4s0,option:router,192.168.103.253"
-      "enp4s0,option:dns-server,192.168.103.253"
-      "enp5s0,option:router,192.168.104.253"
-      "enp5s0,option:dns-server,192.168.104.253"
-    ];
-    # Upstream DNS servers
-    server = ["8.8.8.8" "1.1.1.1"];
-    bind-interfaces = true;
-    log-dhcp = true;
-    log-queries = true;
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      interface = ["enp2s0" "enp3s0" "enp4s0" "enp5s0"];
+      dhcp-range = [
+        "enp2s0,192.168.101.10,192.168.101.100,24h"
+        "enp3s0,192.168.102.10,192.168.102.100,24h"
+        "enp4s0,192.168.103.10,192.168.103.100,24h"
+        "enp5s0,192.168.104.10,192.168.104.100,24h"
+      ];
+      dhcp-option = [
+        "enp2s0,option:router,192.168.101.253"
+        "enp2s0,option:dns-server,192.168.101.253"
+        "enp3s0,option:router,192.168.102.253"
+        "enp3s0,option:dns-server,192.168.102.253"
+        "enp4s0,option:router,192.168.103.253"
+        "enp4s0,option:dns-server,192.168.103.253"
+        "enp5s0,option:router,192.168.104.253"
+        "enp5s0,option:dns-server,192.168.104.253"
+      ];
+      server = ["8.8.8.8" "1.1.1.1"];
+      bind-interfaces = true;
+      log-dhcp = true;
+      log-queries = true;
+    };
   };
-};
 
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = __SSH_PASSWORD_AUTH__;
+    settings.PasswordAuthentication = true;
   };
 
-  services.getty.autologinUser = "__ROUTER_USER__";
+  services.getty.autologinUser = "traum";
 
-  users.users.__ROUTER_USER__ = {
+  users.users.traum = {
     isNormalUser = true;
-    password = "__ROUTER_PASSWORD__";
+    password = "p41EHMalsv3X";
     extraGroups = [ "wheel" "networkmanager" ];
-    __SSH_KEYS__
+    # No SSH keys configured
   };
 }

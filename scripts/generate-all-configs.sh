@@ -91,10 +91,7 @@ build_router_vm() {
     # WiFi interface will be dynamically detected by the router VM service
     
     # Template the router VM config
-    local router_config="$GENERATED_DIR/temp/router-vm-config.nix"
-    
-    # Ensure directory exists
-    mkdir -p "$(dirname "$router_config")"
+    local router_config="$PROJECT_DIR/modules/router-vm-config.nix"
     
     # Create router config from template with all substitutions
     cat > "$router_config" << 'ROUTEREOF'
@@ -186,30 +183,30 @@ build_router_vm() {
       RemainAfterExit = true;
     };
     script = ''
-      WIFI_IFACE=\$(ls /sys/class/net/ | grep -E '^wl' | head -1)
-      if [ -z "\$WIFI_IFACE" ]; then
+      WIFI_IFACE=$(ls /sys/class/net/ | grep -E '^wl' | head -1)
+      if [ -z "$WIFI_IFACE" ]; then
         echo "ERROR: No WiFi interface found!"
         exit 1
       fi
-      echo "Found WiFi interface: \$WIFI_IFACE"
+      echo "Found WiFi interface: $WIFI_IFACE"
       
-      \${pkgs.iptables}/bin/iptables -t nat -F POSTROUTING
-      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
-      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
-      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
-      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
-      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      ${pkgs.iptables}/bin/iptables -t nat -F POSTROUTING
+      ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o "$WIFI_IFACE" -j MASQUERADE
+      ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o "$WIFI_IFACE" -j MASQUERADE
+      ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o "$WIFI_IFACE" -j MASQUERADE
+      ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o "$WIFI_IFACE" -j MASQUERADE
+      ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp1s0 -o "\$WIFI_IFACE" -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o "\$WIFI_IFACE" -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o "\$WIFI_IFACE" -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o "\$WIFI_IFACE" -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o "\$WIFI_IFACE" -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp1s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o "$WIFI_IFACE" -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      ${pkgs.iptables}/bin/iptables -A FORWARD -i "$WIFI_IFACE" -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
     '';
   };
 
@@ -287,7 +284,7 @@ ROUTEREOF
         SSH_KEY_ESCAPED=$(echo "$SSH_KEY_CONTENT" | sed 's/[\/&]/\\&/g')
         sed -i "s|__SSH_KEYS__|openssh.authorizedKeys.keys = [ \"$SSH_KEY_ESCAPED\" ];|" "$router_config"
     else
-        sed -i "s|__SSH_KEYS__||" "$router_config"
+        sed -i "s|__SSH_KEYS__|# No SSH keys configured|" "$router_config"
     fi
     
     log "Router config templated successfully"

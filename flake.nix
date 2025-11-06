@@ -17,11 +17,7 @@ in
 packages.${system} = {
 router-vm-qcow = nixos-generators.nixosGenerate {
 inherit system;
-modules = [ 
-  (if builtins.pathExists ./generated/temp/router-vm-config.nix 
-   then ./generated/temp/router-vm-config.nix 
-   else ./modules/router-vm-config.nix)
-];
+modules = [ ./modules/router-vm-config.nix ];
 format = "qcow";
 };
 };
