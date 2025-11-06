@@ -88,10 +88,7 @@ build_router_vm() {
     source "$PROJECT_DIR/hardware-results.env"
     source "$PROJECT_DIR/router-credentials.env"
     
-    # Detect WiFi interface name in the VM (this will be different from host)
-    # Usually wlp followed by bus id. For 00:14.3, it will likely be wlp9s0 or similar
-    # We'll use a common pattern
-    WIFI_INTERFACE="wlp9s0"
+    # WiFi interface will be dynamically detected by the router VM service
     
     # Template the router VM config
     local router_config="$GENERATED_DIR/modules/router-vm-config.nix"
@@ -168,7 +165,7 @@ build_router_vm() {
     
     nat = {
       enable = true;
-      externalInterface = "__WIFI_INTERFACE__";
+      externalInterface = "";
       internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" "enp4s0" "enp5s0" ];
     };
     
@@ -176,24 +173,44 @@ build_router_vm() {
       enable = true;
       allowedTCPPorts = [ 22 53 ];
       allowedUDPPorts = [ 53 67 68 ];
-      extraCommands = ''
-        iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o __WIFI_INTERFACE__ -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o __WIFI_INTERFACE__ -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o __WIFI_INTERFACE__ -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o __WIFI_INTERFACE__ -j MASQUERADE
-        iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o __WIFI_INTERFACE__ -j MASQUERADE
-        iptables -A FORWARD -i enp1s0 -o __WIFI_INTERFACE__ -j ACCEPT
-        iptables -A FORWARD -i enp2s0 -o __WIFI_INTERFACE__ -j ACCEPT
-        iptables -A FORWARD -i enp3s0 -o __WIFI_INTERFACE__ -j ACCEPT
-        iptables -A FORWARD -i enp4s0 -o __WIFI_INTERFACE__ -j ACCEPT
-        iptables -A FORWARD -i enp5s0 -o __WIFI_INTERFACE__ -j ACCEPT
-        iptables -A FORWARD -i __WIFI_INTERFACE__ -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i __WIFI_INTERFACE__ -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i __WIFI_INTERFACE__ -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i __WIFI_INTERFACE__ -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-        iptables -A FORWARD -i __WIFI_INTERFACE__ -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      '';
     };
+  };
+
+  systemd.services.wifi-detect-and-configure = {
+    description = "Detect WiFi interface and configure NAT";
+    after = [ "network.target" ];
+    before = [ "network-online.target" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      WIFI_IFACE=\$(ls /sys/class/net/ | grep -E '^wl' | head -1)
+      if [ -z "\$WIFI_IFACE" ]; then
+        echo "ERROR: No WiFi interface found!"
+        exit 1
+      fi
+      echo "Found WiFi interface: \$WIFI_IFACE"
+      
+      \${pkgs.iptables}/bin/iptables -t nat -F POSTROUTING
+      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      \${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o "\$WIFI_IFACE" -j MASQUERADE
+      
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp1s0 -o "\$WIFI_IFACE" -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o "\$WIFI_IFACE" -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o "\$WIFI_IFACE" -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp4s0 -o "\$WIFI_IFACE" -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i enp5s0 -o "\$WIFI_IFACE" -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp1s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp2s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp3s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+      \${pkgs.iptables}/bin/iptables -A FORWARD -i "\$WIFI_IFACE" -o enp5s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+    '';
   };
 
   boot.kernel.sysctl = {
@@ -259,7 +276,7 @@ build_router_vm() {
 ROUTEREOF
     
     # Now perform all the substitutions
-    sed -i "s|__WIFI_INTERFACE__|$WIFI_INTERFACE|g" "$router_config"
+    # Note: WiFi interface detection is now handled dynamically by systemd service
     sed -i "s|__SSH_PASSWORD_AUTH__|$SSH_PASSWORD_AUTH|g" "$router_config"
     sed -i "s|__ROUTER_USER__|$ROUTER_USER|g" "$router_config"
     sed -i "s|__ROUTER_PASSWORD__|$ROUTER_PASSWORD|g" "$router_config"
