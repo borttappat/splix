@@ -193,12 +193,12 @@ services.dnsmasq = {
     settings.PasswordAuthentication = __SSH_PASSWORD_AUTH__;
   };
 
-  services.getty.autologinUser = "{{ROUTER_USER}}";
+  services.getty.autologinUser = "__ROUTER_USER__";
 
-  users.users.{{ROUTER_USER}} = {
+  users.users.__ROUTER_USER__ = {
     isNormalUser = true;
-    password = "{{ROUTER_PASSWORD}}";
+    password = "__ROUTER_PASSWORD__";
     extraGroups = [ "wheel" "networkmanager" ];
-    {{SSH_KEYS_CONFIG}}
+    __SSH_KEYS_CONFIG__
   };
 }
