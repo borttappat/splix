@@ -81,7 +81,7 @@ systemd.services.splix-mode-detection = {
   
   # Run after any system reconfiguration
   unitConfig = {
-    ConditionPathExists = "!/run/current-system/splix-mode-maintained";
+    ConditionPathExists = "!/tmp/splix-mode-maintained";
   };
 };
 
@@ -93,7 +93,7 @@ systemd.services.splix-post-rebuild-maintenance = {
     ExecStart = pkgs.writeShellScript "post-rebuild-maintain" ''
       ${maintainRouterModeScript}
       # Create marker to prevent boot service from running unnecessarily
-      touch /run/current-system/splix-mode-maintained
+      touch /tmp/splix-mode-maintained
     '';
     User = "root";
   };
