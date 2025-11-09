@@ -344,6 +344,38 @@ generate_machine_configs() {
     log "Generated machine configs for $MACHINE_NAME"
 }
 
+generate_nixbuild_entry() {
+    log "=== Step 3.5: Generate nixbuild script entry ==="
+    
+    source "$PROJECT_DIR/hardware-results.env"
+    
+    local vendor=$(hostnamectl | grep -i "Hardware Vendor" | awk -F': ' '{print $2}' | xargs)
+    local model=$(hostnamectl | grep -i "Hardware Model" | awk -F': ' '{print $2}' | xargs)
+    local model_lower=$(echo "$model" | tr '[:upper:]' '[:lower:]')
+    
+    # Determine model match string for grep
+    if echo "$model_lower" | grep -q "zenbook"; then
+        MODEL_MATCH="zenbook"
+    elif echo "$model_lower" | grep -q "zephyrus"; then
+        MODEL_MATCH="zephyrus"
+    elif echo "$model_lower" | grep -q "razer"; then
+        MODEL_MATCH="razer"
+    else
+        # Use first distinctive part of model name
+        MODEL_MATCH=$(echo "$model" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+    fi
+    
+    # Generate nixbuild entry
+    mkdir -p "$GENERATED_DIR/nixbuild-entries"
+    
+    sed "s|{{VENDOR}}|$vendor|g; s|{{MODEL}}|$model|g; s|{{MODEL_MATCH}}|$MODEL_MATCH|g; s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
+        "$TEMPLATES_DIR/nixbuild-router-machine-block.template" > \
+        "$GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh"
+    
+    log "Generated nixbuild entry for $MACHINE_NAME (model match: $MODEL_MATCH)"
+    log "Entry saved to: $GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh"
+}
+
 generate_deployment_scripts() {
     log "=== Step 4: Generate Deployment Scripts ==="
     
@@ -467,6 +499,9 @@ create_summary_readme() {
 - \`scripts/deploy-router-vm.sh\` - Production deployment with $PRIMARY_PCI passthrough
 - \`scripts/start-router-vm.sh\` - Router VM startup wrapper
 
+### Nixbuild Integration
+- \`nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh\` - Ready-to-integrate nixbuild script block
+
 ## Network Layout
 
 - **virbr1**: 192.168.100.0/24 - Host management
@@ -500,6 +535,7 @@ main() {
     generate_router_credentials
     build_router_vm
     generate_machine_configs
+    generate_nixbuild_entry
     generate_deployment_scripts
     create_summary_readme
     

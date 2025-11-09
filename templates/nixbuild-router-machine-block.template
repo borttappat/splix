@@ -1,0 +1,47 @@
+# For {{VENDOR}} {{MODEL}} specifically (check model line for "{{MODEL_MATCH}}")
+elif echo "$current_model" | grep -qi "{{MODEL_MATCH}}"; then
+    # Detect current specialisation by checking system state
+    if lsmod | grep -q vfio_pci && [[ -d /sys/class/net/virbr1 ]]; then
+        CURRENT_LABEL="router-setup"
+    else
+        CURRENT_LABEL="base-setup"
+    fi
+    echo "Current system: $CURRENT_LABEL (detected from system state)"
+
+    case "${1:-auto}" in
+        "router-boot")
+            echo "Building {{MACHINE_NAME}} with router specialisation, staging for boot..."
+            sudo nixos-rebuild boot --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "✅ Built. Reboot to activate router mode (automatic detection enabled)"
+            ;;
+        "router-switch")
+            echo "Building {{MACHINE_NAME}} and switching to router specialisation..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "Activating router specialisation..."
+            sudo /run/current-system/specialisation/router/bin/switch-to-configuration switch
+            echo "Running mode maintenance..."
+            sudo systemctl start splix-post-rebuild-maintenance
+            echo "✅ Router mode activated"
+            ;;
+        "base-switch")
+            echo "Building {{MACHINE_NAME}} and staying in base mode..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+            echo "✅ Base mode active (router specialisation available)"
+            ;;
+        *)
+            echo "Building {{MACHINE_NAME}} and maintaining current mode ($CURRENT_LABEL)..."
+            sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#{{MACHINE_NAME}}
+
+            # Use new automatic mode maintenance instead of deprecated commands
+            if [[ "$CURRENT_LABEL" == "router-setup" ]]; then
+                echo "Maintaining router mode configuration..."
+                # Activate router specialisation if we were in router mode
+                sudo /run/current-system/specialisation/router/bin/switch-to-configuration switch
+            fi
+            
+            # Run automatic mode maintenance
+            echo "Running automatic mode maintenance..."
+            sudo systemctl start splix-post-rebuild-maintenance
+            echo "✅ Mode maintenance complete. Current mode: $CURRENT_LABEL"
+            ;;
+    esac
