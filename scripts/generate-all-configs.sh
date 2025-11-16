@@ -427,7 +427,6 @@ sudo virt-install \
     --os-variant=nixos-unstable \
     --boot=hd \
     --nographics \
-    --console pty,target_type=virtio \
     --network bridge=virbr1,model=virtio \
     --network bridge=virbr2,model=virtio \
     --network bridge=virbr3,model=virtio \
@@ -465,10 +464,86 @@ STARTEOF
     sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g; s|PCI_DEVICE_PLACEHOLDER|$PRIMARY_PCI|g" \
         "$GENERATED_DIR/scripts/deploy-router-vm.sh"
     
+    cat > "$GENERATED_DIR/scripts/autostart-router-vm.sh" << 'AUTOSTARTEOF'
+#!/run/current-system/sw/bin/bash
+set -euo pipefail
+
+readonly VM_NAME="router-vm-passthrough"
+log() { echo "[$(date +%H:%M:%S)] Router Autostart: $*"; }
+
+# Use full paths since systemd has limited PATH
+VIRSH="/run/current-system/sw/bin/virsh"
+SYSTEMCTL="/run/current-system/sw/bin/systemctl"
+
+log "Starting router VM autostart process..."
+
+# Check if libvirtd is running (no sudo needed - already root)
+if ! $SYSTEMCTL is-active --quiet libvirtd; then
+    log "Starting libvirtd service..."
+    $SYSTEMCTL start libvirtd
+    sleep 3
+    log "Libvirtd started"
+fi
+
+# Wait a bit more for libvirtd to be fully ready
+sleep 2
+
+# Check if VM exists
+if ! $VIRSH --connect qemu:///system list --all | grep -q "$VM_NAME"; then
+    log "ERROR: Router VM '$VM_NAME' not found"
+    log "Please run deploy-router-vm.sh first to create the VM"
+    exit 1
+fi
+
+# Check current VM state
+vm_state=$($VIRSH --connect qemu:///system list --all | grep "$VM_NAME" | awk '{print $3}' || echo "unknown")
+log "Router VM current state: $vm_state"
+
+case "$vm_state" in
+    "running")
+        log "Router VM is already running - nothing to do"
+        ;;
+    "shut"|"shutoff")
+        log "Starting router VM..."
+        if $VIRSH --connect qemu:///system start "$VM_NAME"; then
+            log "Router VM started successfully"
+            sleep 3
+        else
+            log "ERROR: Failed to start router VM"
+            exit 1
+        fi
+        ;;
+    *)
+        log "Router VM in unexpected state: $vm_state"
+        log "Attempting to start anyway..."
+        if $VIRSH --connect qemu:///system start "$VM_NAME"; then
+            log "Router VM started despite unexpected state"
+            sleep 3
+        else
+            log "ERROR: Failed to start router VM"
+            exit 1
+        fi
+        ;;
+esac
+
+# Final verification
+if $VIRSH --connect qemu:///system list | grep -q "$VM_NAME.*running"; then
+    log "✅ Router VM is running and ready"
+    log "✅ WiFi credentials preserved (VM not recreated)"
+    log "✅ Management interface: 192.168.100.253"
+else
+    log "❌ Router VM startup verification failed"
+    exit 1
+fi
+
+log "Router VM autostart completed successfully"
+AUTOSTARTEOF
+
     chmod +x "$GENERATED_DIR/scripts/deploy-router-vm.sh"
     chmod +x "$GENERATED_DIR/scripts/start-router-vm.sh"
+    chmod +x "$GENERATED_DIR/scripts/autostart-router-vm.sh"
     
-    log "Generated deployment scripts"
+    log "Generated deployment scripts (including autostart)"
 }
 
 create_summary_readme() {
