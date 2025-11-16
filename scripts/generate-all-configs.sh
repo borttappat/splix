@@ -328,20 +328,28 @@ generate_machine_configs() {
     
     mkdir -p "$GENERATED_DIR"/{modules,scripts}
     
-    # Generate passthrough config
+    # Generate passthrough config (hardware only)
     sed "s|{{DEVICE_ID}}|$PRIMARY_ID|g; s|{{PRIMARY_DRIVER}}|$PRIMARY_DRIVER|g; s|{{MACHINE_NAME}}|$MACHINE_NAME|g" \
         "$TEMPLATES_DIR/machine-passthrough.nix.template" > \
         "$GENERATED_DIR/modules/${MACHINE_NAME}-passthrough.nix"
     
-    # Generate machine spec config with username substitution
+    # Generate router services config (software only)
     CURRENT_USER="${USER:-$(whoami)}"
     log "User: $CURRENT_USER"
     
     sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g" \
-        "$TEMPLATES_DIR/specialisation-block.template" > \
-        "$GENERATED_DIR/modules/${MACHINE_NAME}.nix"
+        "$TEMPLATES_DIR/router-services.nix.template" > \
+        "$GENERATED_DIR/modules/${MACHINE_NAME}-router.nix"
     
-    log "Generated machine configs for $MACHINE_NAME"
+    # Also generate the legacy combined config for backward compatibility
+    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g" \
+        "$TEMPLATES_DIR/specialisation-block.template" > \
+        "$GENERATED_DIR/modules/${MACHINE_NAME}-legacy.nix"
+    
+    log "Generated modular configs for $MACHINE_NAME:"
+    log "  - ${MACHINE_NAME}-passthrough.nix (hardware/VFIO)"  
+    log "  - ${MACHINE_NAME}-router.nix (services/specialization)"
+    log "  - ${MACHINE_NAME}-legacy.nix (backward compatibility)"
 }
 
 generate_nixbuild_entry() {
@@ -566,9 +574,12 @@ create_summary_readme() {
 
 ## Generated Files
 
-### Modules
-- \`modules/${MACHINE_NAME}-passthrough.nix\` - VFIO passthrough configuration
-- \`modules/${MACHINE_NAME}.nix\` - Complete machine configuration with router specialisation
+### Modules (Modular Architecture)
+- \`modules/${MACHINE_NAME}-passthrough.nix\` - Hardware/VFIO configuration only
+- \`modules/${MACHINE_NAME}-router.nix\` - Router services and specialization only
+
+### Legacy Module (Backward Compatibility)
+- \`modules/${MACHINE_NAME}-legacy.nix\` - Combined configuration (old approach)
 
 ### Scripts
 - \`scripts/deploy-router-vm.sh\` - Production deployment with $PRIMARY_PCI passthrough
@@ -589,10 +600,21 @@ All networks route through router VM to WiFi.
 
 ## Next Steps
 
-1. Copy configs to dotfiles
-2. Add machine to flake.nix  
-3. Git add files before building
+### For New Modular Approach (Recommended):
+1. Copy modular configs to dotfiles
+2. Add these imports to your machine.nix:
+   \`\`\`
+   imports = [ 
+     ./router-generated/${MACHINE_NAME}-passthrough.nix
+     ./router-generated/${MACHINE_NAME}-router.nix
+   ];
+   \`\`\`
+3. Add machine to flake.nix  
 4. Build with nixbuild
+
+### For Legacy Approach:
+1. Use \`${MACHINE_NAME}-legacy.nix\` instead (contains everything)
+2. Import as before
 
 Generated: $(date)
 Hardware: $PRIMARY_INTERFACE ($PRIMARY_ID), Driver: $PRIMARY_DRIVER
