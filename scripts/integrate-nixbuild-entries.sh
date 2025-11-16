@@ -39,12 +39,19 @@ main() {
     # Copy everything before integration point
     head -n $((integration_line - 1)) "$NIXBUILD_SCRIPT" > "$temp_file"
     
-    # Add generated entries
+    # Add generated entries (skip duplicates)
     log "Integrating nixbuild entries:"
     for entry_file in "$GENERATED_DIR/nixbuild-entries"/*.sh; do
         if [[ -f "$entry_file" ]]; then
             local machine_name=$(basename "$entry_file" | sed 's/-nixbuild-entry\.sh$//')
-            log "  - $machine_name"
+            
+            # Check for duplicates by looking for the machine name in model matching
+            if grep -q "Building $machine_name" "$NIXBUILD_SCRIPT"; then
+                log "  - $machine_name (skipped - already exists)"
+                continue
+            fi
+            
+            log "  - $machine_name (added)"
             
             # Add newline and entry content
             echo "" >> "$temp_file"

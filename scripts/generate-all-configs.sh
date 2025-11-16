@@ -624,8 +624,65 @@ READMEEOF
     log "Created: README.md with credentials"
 }
 
+integrate_nixbuild() {
+    log "=== Step 5: Automatic nixbuild Integration ==="
+    
+    if [[ ! -f "$PROJECT_DIR/scripts/integrate-nixbuild-entries.sh" ]]; then
+        log "ERROR: Integration script not found"
+        return 1
+    fi
+    
+    # Run integration script to add new machine to nixbuild.sh
+    log "Integrating new machine into nixbuild.sh..."
+    if "$PROJECT_DIR/scripts/integrate-nixbuild-entries.sh"; then
+        log "Successfully integrated $MACHINE_NAME into nixbuild.sh"
+        
+        # Verify integration worked
+        if grep -q "$MACHINE_NAME" "$PROJECT_DIR/nixbuild.sh"; then
+            log "Verified: $MACHINE_NAME found in nixbuild.sh"
+        else
+            log "Warning: $MACHINE_NAME not found in nixbuild.sh after integration"
+        fi
+    else
+        log "ERROR: Failed to integrate into nixbuild.sh"
+        log "Manual integration available with: ./scripts/integrate-nixbuild-entries.sh"
+        return 1
+    fi
+    
+    # Test that nixbuild can detect the new machine
+    log "Testing nixbuild detection..."
+    cd "$PROJECT_DIR"
+    if ./nixbuild.sh --help >/dev/null 2>&1; then
+        log "nixbuild.sh is functional"
+    else
+        log "Warning: nixbuild.sh may have syntax issues after integration"
+    fi
+}
+
+finalize_setup() {
+    log "=== Setup Complete ==="
+    
+    log "New machine '$MACHINE_NAME' is fully integrated!"
+    log ""
+    log "Generated configs:"
+    log "  - Hardware: ${MACHINE_NAME}-passthrough.nix"
+    log "  - Services: ${MACHINE_NAME}-router.nix"
+    log "  - Scripts: deploy-router-vm.sh, autostart-router-vm.sh"
+    log ""
+    log "Integrated into nixbuild.sh"
+    log "Router VM built and ready"
+    log ""
+    log "Ready to use:"
+    log "  ./nixbuild.sh                    # Build in current mode"
+    log "  ./nixbuild.sh router-switch      # Build and switch to router mode"
+    log "  ./nixbuild.sh base-switch        # Build and stay in base mode"
+    log ""
+    log "All files in: $GENERATED_DIR"
+    log "Router credentials: router-credentials.env"
+}
+
 main() {
-    log "=== Complete Machine Setup ==="
+    log "=== Complete Machine Setup and Integration ==="
 
     check_dependencies
     run_hardware_detection
@@ -634,13 +691,9 @@ main() {
     generate_machine_configs
     generate_nixbuild_entry
     generate_deployment_scripts
+    integrate_nixbuild
     create_summary_readme
-    
-    log "=== Generation Complete ==="
-    log "All files in: $GENERATED_DIR"
-    log ""
-    log "Router credentials saved in: router-credentials.env"
-    log "Remember to 'git add' generated files before building with nixbuild"
+    finalize_setup
 }
 
 main "$@"
