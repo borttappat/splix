@@ -120,6 +120,18 @@ elif echo "$current_model" | grep -qi "zephyrus"; then
             ;;
     esac
 
+# === ADD NEW ROUTER MACHINES HERE ===
+# 
+# To add router support for a new machine:
+# 1. Run: ./scripts/generate-all-configs.sh
+# 2. Copy the generated block from: generated/nixbuild-entries/{machine}-PASTE-INTO-NIXBUILD.txt
+# 3. Paste it above this comment
+#
+# Example format:
+# elif echo "$current_model" | grep -qi "your-machine"; then
+#     # Router specialization logic here
+# 
+
 # For other Asus-hosts
 elif echo "$current_host" | grep -q "ASUS"; then
     sudo nixos-rebuild switch --impure --show-trace --option warn-dirty false --flake ~/dotfiles#asus

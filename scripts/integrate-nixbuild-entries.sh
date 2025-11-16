@@ -25,8 +25,8 @@ main() {
     cp "$NIXBUILD_SCRIPT" "$NIXBUILD_SCRIPT.backup.$(date +%Y%m%d_%H%M%S)"
     log "Created backup: $NIXBUILD_SCRIPT.backup.$(date +%Y%m%d_%H%M%S)"
     
-    # Find integration point (before "For other Asus-hosts")
-    local integration_line=$(grep -n "# For other Asus-hosts" "$NIXBUILD_SCRIPT" | cut -d: -f1)
+    # Find integration point (before the placeholder comment)
+    local integration_line=$(grep -n "# === ADD NEW ROUTER MACHINES HERE ===" "$NIXBUILD_SCRIPT" | cut -d: -f1)
     if [[ -z "$integration_line" ]]; then
         error "Could not find integration point in nixbuild.sh"
     fi

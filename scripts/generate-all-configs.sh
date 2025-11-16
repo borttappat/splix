@@ -380,8 +380,33 @@ generate_nixbuild_entry() {
         "$TEMPLATES_DIR/nixbuild-router-machine-block.template" > \
         "$GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh"
     
+    # Also create a ready-to-paste version with clear instructions
+    cat > "$GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-PASTE-INTO-NIXBUILD.txt" << PASTEEOF
+# ========================================
+# MANUAL NIXBUILD INTEGRATION FOR $MACHINE_NAME
+# ========================================
+#
+# INSTRUCTIONS:
+# 1. Copy the block below
+# 2. Paste it into nixbuild.sh at the marked location
+# 3. Look for: "# === ADD NEW ROUTER MACHINES HERE ==="
+#
+# MACHINE INFO:
+# Vendor: $vendor
+# Model: $model  
+# Flake target: ~/dotfiles#$MACHINE_NAME
+#
+# ========================================
+
+$(cat "$GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh")
+
+# ========================================
+# END OF PASTE BLOCK
+# ========================================
+PASTEEOF
+    
     log "Generated nixbuild entry for $MACHINE_NAME (model match: $MODEL_MATCH)"
-    log "Entry saved to: $GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-nixbuild-entry.sh"
+    log "Ready-to-paste version: $GENERATED_DIR/nixbuild-entries/${MACHINE_NAME}-PASTE-INTO-NIXBUILD.txt"
 }
 
 generate_deployment_scripts() {
@@ -624,39 +649,28 @@ READMEEOF
     log "Created: README.md with credentials"
 }
 
-integrate_nixbuild() {
-    log "=== Step 5: Automatic nixbuild Integration ==="
+provide_integration_instructions() {
+    log "=== Step 5: Integration Instructions ==="
     
-    if [[ ! -f "$PROJECT_DIR/scripts/integrate-nixbuild-entries.sh" ]]; then
-        log "ERROR: Integration script not found"
-        return 1
-    fi
-    
-    # Run integration script to add new machine to nixbuild.sh
-    log "Integrating new machine into nixbuild.sh..."
-    if "$PROJECT_DIR/scripts/integrate-nixbuild-entries.sh"; then
-        log "Successfully integrated $MACHINE_NAME into nixbuild.sh"
-        
-        # Verify integration worked
-        if grep -q "$MACHINE_NAME" "$PROJECT_DIR/nixbuild.sh"; then
-            log "Verified: $MACHINE_NAME found in nixbuild.sh"
-        else
-            log "Warning: $MACHINE_NAME not found in nixbuild.sh after integration"
-        fi
-    else
-        log "ERROR: Failed to integrate into nixbuild.sh"
-        log "Manual integration available with: ./scripts/integrate-nixbuild-entries.sh"
-        return 1
-    fi
-    
-    # Test that nixbuild can detect the new machine
-    log "Testing nixbuild detection..."
-    cd "$PROJECT_DIR"
-    if ./nixbuild.sh --help >/dev/null 2>&1; then
-        log "nixbuild.sh is functional"
-    else
-        log "Warning: nixbuild.sh may have syntax issues after integration"
-    fi
+    log "Router setup files generated successfully!"
+    log ""
+    log "MANUAL INTEGRATION REQUIRED:"
+    log "1. Copy modular configs to dotfiles:"
+    log "   cp generated/modules/${MACHINE_NAME}-passthrough.nix ~/dotfiles/modules/router-generated/"
+    log "   cp generated/modules/${MACHINE_NAME}-router.nix ~/dotfiles/modules/router-generated/"
+    log ""
+    log "2. Add imports to your ${MACHINE_NAME}.nix config:"
+    log "   imports = ["
+    log "     ./router-generated/${MACHINE_NAME}-passthrough.nix"
+    log "     ./router-generated/${MACHINE_NAME}-router.nix"
+    log "   ];"
+    log ""
+    log "3. For nixbuild.sh integration:"
+    log "   - Review: generated/nixbuild-entries/${MACHINE_NAME}-PASTE-INTO-NIXBUILD.txt"
+    log "   - Copy the block and paste into nixbuild.sh at the marked location"
+    log ""
+    log "Optional automatic integration available:"
+    log "   ./scripts/integrate-nixbuild-entries.sh"
 }
 
 finalize_setup() {
@@ -691,7 +705,7 @@ main() {
     generate_machine_configs
     generate_nixbuild_entry
     generate_deployment_scripts
-    integrate_nixbuild
+    provide_integration_instructions
     create_summary_readme
     finalize_setup
 }
