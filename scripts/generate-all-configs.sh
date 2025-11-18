@@ -27,25 +27,188 @@ check_dependencies() {
 }
 
 run_hardware_detection() {
-    log "=== Step 1: Hardware Detection ==="
+    log "=== Step 1: Integrated Hardware Detection ==="
     
-    if [[ ! -f "$SCRIPT_DIR/hardware-identify.sh" ]]; then
-        error "hardware-identify.sh not found"
+    # Check if we have existing hardware results and are in router mode
+    if [[ -f "hardware-results.env" ]]; then
+        if ip addr show virbr1 >/dev/null 2>&1 && [[ "$(ip route | grep default | awk '{print $5}' | head -1)" == "virbr1" ]]; then
+            log "Router mode detected - using existing hardware results"
+            source hardware-results.env
+            if [[ -n "${PRIMARY_INTERFACE:-}" && -n "${PRIMARY_PCI:-}" && -n "${PRIMARY_ID:-}" ]]; then
+                log "Found: $PRIMARY_INTERFACE ($PRIMARY_ID) on $PRIMARY_PCI"
+                log "Compatibility: ${COMPATIBILITY_SCORE:-0}/10"
+                return 0
+            fi
+        fi
+    fi
+
+    # Check if running as root
+    if [[ $EUID -eq 0 ]]; then
+        error "Don't run this as root"
+    fi
+
+    log "Identifying hardware for VM router setup..."
+
+    # 1. Check IOMMU support
+    log "1. IOMMU Support:"
+    if sudo dmesg | grep -qi "iommu.*enabled\|intel-iommu.*enabled\|iommu.*force.*enabled\|dmar.*intel-iommu"; then
+        log "   ✓ IOMMU enabled"
+        IOMMU_SCORE=3
+    elif grep -qi "iommu=pt\|intel_iommu=on" /proc/cmdline; then
+        log "   ✓ IOMMU configured in kernel parameters"
+        IOMMU_SCORE=2
+    else
+        log "   ✗ IOMMU not detected - may need kernel parameters"
+        IOMMU_SCORE=0
+    fi
+
+    # 2. Find WiFi devices and their drivers
+    log "2. WiFi Device Analysis:"
+    
+    declare -A wifi_devices
+    declare -A wifi_drivers
+    declare -A wifi_pcis
+    declare -A wifi_ids
+    
+    # Parse lspci for network controllers
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^([0-9a-f:\.]+)\ .*[Nn]etwork.*[Cc]ontroller.*:\ (.+)$ ]]; then
+            pci_addr="${BASH_REMATCH[1]}"
+            device_name="${BASH_REMATCH[2]}"
+            
+            # Get device ID
+            device_id=$(lspci -n -s "$pci_addr" | awk '{print $3}')
+            vendor_id="${device_id%:*}"
+            product_id="${device_id#*:}"
+            
+            # Check if it's a WiFi device (common WiFi vendors)
+            if [[ "$vendor_id" =~ ^(8086|10ec|14e4|1814|168c|1b21)$ ]] || 
+               [[ "$device_name" =~ [Ww]i-?[Ff]i|[Ww]ireless|802\.11|WLAN ]]; then
+                
+                # Find the driver
+                driver=""
+                if [[ -d "/sys/bus/pci/devices/0000:$pci_addr/driver" ]]; then
+                    driver=$(basename "$(readlink "/sys/bus/pci/devices/0000:$pci_addr/driver")")
+                else
+                    # Try to determine driver from device ID
+                    case "$vendor_id" in
+                        8086) driver="iwlwifi" ;;
+                        10ec) driver="rtw88_8822ce" ;;
+                        14e4) driver="brcmfmac" ;;
+                        1814) driver="rt2x00" ;;
+                        168c) driver="ath10k_pci" ;;
+                        *) driver="unknown" ;;
+                    esac
+                fi
+                
+                # Find network interface name
+                interface=""
+                for iface in /sys/class/net/*; do
+                    if [[ -f "$iface/device/uevent" ]] && grep -q "PCI_SLOT_NAME=0000:$pci_addr" "$iface/device/uevent" 2>/dev/null; then
+                        interface=$(basename "$iface")
+                        break
+                    fi
+                done
+                
+                if [[ -z "$interface" ]]; then
+                    # Fallback: look for wireless interfaces
+                    for iface in /sys/class/net/w*; do
+                        if [[ -d "$iface" ]]; then
+                            interface=$(basename "$iface")
+                            break
+                        fi
+                    done
+                fi
+                
+                wifi_devices["$pci_addr"]="$device_name"
+                wifi_drivers["$pci_addr"]="$driver"
+                wifi_pcis["$pci_addr"]="$pci_addr"
+                wifi_ids["$pci_addr"]="$device_id"
+                
+                log "   Found: $device_name"
+                log "   PCI: $pci_addr, ID: $device_id, Driver: $driver"
+                if [[ -n "$interface" ]]; then
+                    log "   Interface: $interface"
+                fi
+            fi
+        fi
+    done < <(lspci)
+    
+    if [[ ${#wifi_devices[@]} -eq 0 ]]; then
+        error "No WiFi devices found - router setup requires WiFi hardware"
     fi
     
-    cd "$PROJECT_DIR"
-    ./scripts/hardware-identify.sh
+    # 3. Select primary WiFi device (first Intel if available, otherwise first found)
+    PRIMARY_PCI=""
+    PRIMARY_ID=""
+    PRIMARY_DRIVER=""
+    PRIMARY_INTERFACE=""
     
-    if [[ ! -f "hardware-results.env" ]]; then
-        error "Hardware detection failed - no results generated"
+    # Prefer Intel devices
+    for pci in "${!wifi_devices[@]}"; do
+        if [[ "${wifi_ids[$pci]}" =~ ^8086: ]]; then
+            PRIMARY_PCI="$pci"
+            PRIMARY_ID="${wifi_ids[$pci]}"
+            PRIMARY_DRIVER="${wifi_drivers[$pci]}"
+            break
+        fi
+    done
+    
+    # If no Intel, take first device
+    if [[ -z "$PRIMARY_PCI" ]]; then
+        PRIMARY_PCI=$(printf '%s\n' "${!wifi_devices[@]}" | head -1)
+        PRIMARY_ID="${wifi_ids[$PRIMARY_PCI]}"
+        PRIMARY_DRIVER="${wifi_drivers[$PRIMARY_PCI]}"
     fi
     
-    source hardware-results.env
-    if [[ "${COMPATIBILITY_SCORE:-0}" -lt 6 ]]; then
-        error "Hardware compatibility too low ($COMPATIBILITY_SCORE/10)"
+    # Find interface for primary device
+    for iface in /sys/class/net/*; do
+        if [[ -f "$iface/device/uevent" ]] && grep -q "PCI_SLOT_NAME=0000:$PRIMARY_PCI" "$iface/device/uevent" 2>/dev/null; then
+            PRIMARY_INTERFACE=$(basename "$iface")
+            break
+        fi
+    done
+    
+    log "Selected primary WiFi device:"
+    log "   Device: ${wifi_devices[$PRIMARY_PCI]}"
+    log "   PCI: $PRIMARY_PCI"
+    log "   ID: $PRIMARY_ID" 
+    log "   Driver: $PRIMARY_DRIVER"
+    log "   Interface: ${PRIMARY_INTERFACE:-unknown}"
+    
+    # 4. Calculate compatibility score
+    WIFI_SCORE=0
+    [[ ${#wifi_devices[@]} -gt 0 ]] && ((WIFI_SCORE += 3))
+    [[ "$PRIMARY_DRIVER" == "iwlwifi" ]] && ((WIFI_SCORE += 2))
+    [[ -n "$PRIMARY_INTERFACE" ]] && ((WIFI_SCORE += 2))
+    
+    VIRT_SCORE=0
+    command -v virt-install >/dev/null && ((VIRT_SCORE += 2))
+    [[ -f /dev/kvm ]] && ((VIRT_SCORE += 1))
+    
+    COMPATIBILITY_SCORE=$((IOMMU_SCORE + WIFI_SCORE + VIRT_SCORE))
+    
+    log "3. Compatibility Assessment:"
+    log "   IOMMU: $IOMMU_SCORE/3"
+    log "   WiFi: $WIFI_SCORE/7" 
+    log "   Virtualization: $VIRT_SCORE/3"
+    log "   Total: $COMPATIBILITY_SCORE/13"
+    
+    if [[ $COMPATIBILITY_SCORE -lt 6 ]]; then
+        error "Hardware compatibility too low ($COMPATIBILITY_SCORE/13) - router setup may not work reliably"
     fi
     
-    log "Hardware detection complete: $COMPATIBILITY_SCORE/10"
+    # Save results
+    cat > "hardware-results.env" << EOF
+PRIMARY_INTERFACE=$PRIMARY_INTERFACE
+PRIMARY_PCI=$PRIMARY_PCI
+PRIMARY_ID=$PRIMARY_ID
+PRIMARY_DRIVER=$PRIMARY_DRIVER
+COMPATIBILITY_SCORE=$COMPATIBILITY_SCORE
+WIFI_DEVICES_COUNT=${#wifi_devices[@]}
+EOF
+
+    log "Hardware detection complete: $COMPATIBILITY_SCORE/13"
 }
 
 generate_router_credentials() {
@@ -337,19 +500,13 @@ generate_machine_configs() {
     CURRENT_USER="${USER:-$(whoami)}"
     log "User: $CURRENT_USER"
     
-    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g" \
+    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g; s|{{PRIMARY_DRIVER}}|$PRIMARY_DRIVER|g" \
         "$TEMPLATES_DIR/router-services.nix.template" > \
         "$GENERATED_DIR/modules/${MACHINE_NAME}-router.nix"
-    
-    # Also generate the legacy combined config for backward compatibility
-    sed "s|{{MACHINE_NAME}}|$MACHINE_NAME|g; s|{{USERNAME}}|$CURRENT_USER|g" \
-        "$TEMPLATES_DIR/specialisation-block.template" > \
-        "$GENERATED_DIR/modules/${MACHINE_NAME}-legacy.nix"
     
     log "Generated modular configs for $MACHINE_NAME:"
     log "  - ${MACHINE_NAME}-passthrough.nix (hardware/VFIO)"  
     log "  - ${MACHINE_NAME}-router.nix (services/specialization)"
-    log "  - ${MACHINE_NAME}-legacy.nix (backward compatibility)"
 }
 
 generate_nixbuild_entry() {
@@ -603,9 +760,6 @@ create_summary_readme() {
 - \`modules/${MACHINE_NAME}-passthrough.nix\` - Hardware/VFIO configuration only
 - \`modules/${MACHINE_NAME}-router.nix\` - Router services and specialization only
 
-### Legacy Module (Backward Compatibility)
-- \`modules/${MACHINE_NAME}-legacy.nix\` - Combined configuration (old approach)
-
 ### Scripts
 - \`scripts/deploy-router-vm.sh\` - Production deployment with $PRIMARY_PCI passthrough
 - \`scripts/start-router-vm.sh\` - Router VM startup wrapper
@@ -637,9 +791,6 @@ All networks route through router VM to WiFi.
 3. Add machine to flake.nix  
 4. Build with nixbuild
 
-### For Legacy Approach:
-1. Use \`${MACHINE_NAME}-legacy.nix\` instead (contains everything)
-2. Import as before
 
 Generated: $(date)
 Hardware: $PRIMARY_INTERFACE ($PRIMARY_ID), Driver: $PRIMARY_DRIVER

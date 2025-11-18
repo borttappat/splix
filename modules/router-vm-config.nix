@@ -168,7 +168,7 @@
 
   users.users.traum = {
     isNormalUser = true;
-    password = "mo6UcWJQTEwj";
+    password = "hnsXkr6quWEW";
     extraGroups = [ "wheel" "networkmanager" ];
     # No SSH keys configured
   };
