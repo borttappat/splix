@@ -2,7 +2,7 @@
 {
   nixpkgs.config.allowUnfree = true;
 
-  imports = [ 
+  imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
 
@@ -11,9 +11,9 @@
     "virtio_net" "virtio_scsi"
   ];
 
-  boot.kernelParams = [ 
-    "console=tty1" 
-    "console=ttyS0,115200n8" 
+  boot.kernelParams = [
+    "console=tty1"
+    "console=ttyS0,115200n8"
   ];
 
   system.stateVersion = "25.05";
@@ -22,10 +22,10 @@
     hostName = "router-vm";
     useDHCP = false;
     enableIPv6 = false;
-    
+
     networkmanager.enable = true;
     wireless.enable = false;
-    
+
     # Management bridge interface
     interfaces.enp1s0 = {
       ipv4.addresses = [{
@@ -33,7 +33,7 @@
         prefixLength = 24;
       }];
     };
-    
+
     # Guest network interfaces
     interfaces.enp2s0 = {
       ipv4.addresses = [{
@@ -41,7 +41,7 @@
         prefixLength = 24;
       }];
     };
-    
+
     interfaces.enp3s0 = {
       ipv4.addresses = [{
         address = "192.168.102.253";
@@ -62,13 +62,13 @@
         prefixLength = 24;
       }];
     };
-    
+
     nat = {
       enable = true;
       externalInterface = "";
       internalInterfaces = [ "enp1s0" "enp2s0" "enp3s0" "enp4s0" "enp5s0" ];
     };
-    
+
     firewall = {
       enable = true;
       allowedTCPPorts = [ 22 53 ];
@@ -76,6 +76,7 @@
     };
   };
 
+  # Dynamic WiFi interface detection and NAT configuration
   systemd.services.wifi-detect-and-configure = {
     description = "Detect WiFi interface and configure NAT";
     after = [ "network.target" ];
@@ -92,14 +93,14 @@
         exit 1
       fi
       echo "Found WiFi interface: $WIFI_IFACE"
-      
+
       ${pkgs.iptables}/bin/iptables -t nat -F POSTROUTING
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.101.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.102.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.103.0/24 -o "$WIFI_IFACE" -j MASQUERADE
       ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 192.168.104.0/24 -o "$WIFI_IFACE" -j MASQUERADE
-      
+
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp1s0 -o "$WIFI_IFACE" -j ACCEPT
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp2s0 -o "$WIFI_IFACE" -j ACCEPT
       ${pkgs.iptables}/bin/iptables -A FORWARD -i enp3s0 -o "$WIFI_IFACE" -j ACCEPT
@@ -168,7 +169,7 @@
 
   users.users.traum = {
     isNormalUser = true;
-    password = "fCkPznqEho6c";
+    password = "ifEHbuuhSez9";
     extraGroups = [ "wheel" "networkmanager" ];
     # No SSH keys configured
   };
